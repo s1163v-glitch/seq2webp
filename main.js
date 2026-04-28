@@ -7,7 +7,7 @@ let mainWindow
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 820, height: 680, minWidth: 660, minHeight: 520,
+    width: 880, height: 680, minWidth: 700, minHeight: 520,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
     title: 'Seq2WebP', backgroundColor: '#ffffff', show: false
   })
@@ -21,12 +21,12 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 
 ipcMain.handle('convert-frames', async (event, opts) => {
-  const { filePaths, fps, loopCount, quality, width, height, format, paletteSize } = opts
+  const { filePaths, fps, loopCount, quality, width, height, format, paletteSize, blurSigma, dither } = opts
   const delayMs = Math.round(1000 / fps)
   try {
     let sharp
     try { sharp = require('sharp') } catch (e) { throw new Error('sharp 모듈 로드 실패: ' + e.message) }
-    if (format === 'gif') return await buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs, paletteSize || 256)
+    if (format === 'gif') return await buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs, paletteSize || 256, blurSigma || 0, dither !== false)
     else return await buildWebP(event, sharp, filePaths, loopCount, quality, width, height, delayMs)
   } catch (err) {
     console.error('[convert-frames error]', err)
@@ -49,7 +49,7 @@ async function buildWebP(event, sharp, filePaths, loopCount, quality, width, hei
   return { success: true, tmpPath, frameCount: frames.length, size: animBuf.length, format: 'webp' }
 }
 
-async function buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs, paletteSize) {
+async function buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs, paletteSize, blurSigma, dither) {
   const firstMeta = await sharp(filePaths[0]).metadata()
   const MAX = 800
   let W = width || firstMeta.width
@@ -64,37 +64,32 @@ async function buildGIF(event, sharp, filePaths, loopCount, quality, width, heig
   const rgbFrames = []
   for (let i = 0; i < filePaths.length; i++) {
     event.sender.send('progress', { step: 'load', index: i, total: filePaths.length })
-    const buf = await sharp(filePaths[i])
-      .resize(W, H, { fit: 'fill' })
-      .removeAlpha()
-      .raw()
-      .toBuffer()
+    let pipeline = sharp(filePaths[i]).resize(W, H, { fit: 'fill' })
+    // 블러 적용 (노이즈 감소)
+    if (blurSigma > 0) pipeline = pipeline.blur(blurSigma)
+    const buf = await pipeline.removeAlpha().raw().toBuffer()
     rgbFrames.push(buf)
   }
 
   event.sender.send('progress', { step: 'encode', index: 0, total: rgbFrames.length })
   const palette = medianCutIterative(rgbFrames[0], paletteSize)
   const nearest = buildNearestLookup(palette)
-  const gifBuf = encodeAnimatedGIF(rgbFrames, W, H, delayMs, loopCount, palette, nearest, paletteSize)
+  const gifBuf = encodeAnimatedGIF(rgbFrames, W, H, delayMs, loopCount, palette, nearest, paletteSize, dither)
   const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.gif`)
   fs.writeFileSync(tmpPath, gifBuf)
   return { success: true, tmpPath, frameCount: filePaths.length, size: gifBuf.length, format: 'gif' }
 }
 
-// ---- Median Cut (반복문) ----
+// ---- Median Cut ----
 function medianCutIterative(rgbBuf, numColors) {
   const total = rgbBuf.length / 3
   const step = Math.max(1, Math.floor(total / 8000))
   const pixels = []
-  for (let i = 0; i < total; i += step) {
-    pixels.push([rgbBuf[i*3], rgbBuf[i*3+1], rgbBuf[i*3+2]])
-  }
+  for (let i = 0; i < total; i += step) pixels.push([rgbBuf[i*3], rgbBuf[i*3+1], rgbBuf[i*3+2]])
   let boxes = [pixels]
   while (boxes.length < numColors) {
-    let maxSize = 0, maxIdx = 0
-    for (let i = 0; i < boxes.length; i++) {
-      if (boxes[i].length > maxSize) { maxSize = boxes[i].length; maxIdx = i }
-    }
+    let maxSize=0, maxIdx=0
+    for (let i=0; i<boxes.length; i++) { if(boxes[i].length>maxSize){maxSize=boxes[i].length;maxIdx=i} }
     const box = boxes[maxIdx]
     if (box.length <= 1) break
     let minR=255,maxR=0,minG=255,maxG=0,minB=255,maxB=0
@@ -106,173 +101,153 @@ function medianCutIterative(rgbBuf, numColors) {
     const rR=maxR-minR,rG=maxG-minG,rB=maxB-minB
     const ch = rR>=rG&&rR>=rB ? 0 : rG>=rB ? 1 : 2
     box.sort((a,b)=>a[ch]-b[ch])
-    const mid = Math.floor(box.length/2)
-    boxes.splice(maxIdx, 1, box.slice(0,mid), box.slice(mid))
+    const mid=Math.floor(box.length/2)
+    boxes.splice(maxIdx,1,box.slice(0,mid),box.slice(mid))
   }
   const palette = boxes.map(box => {
-    if (!box.length) return [0,0,0]
+    if(!box.length)return[0,0,0]
     const n=box.length
-    return [
-      Math.round(box.reduce((s,p)=>s+p[0],0)/n),
-      Math.round(box.reduce((s,p)=>s+p[1],0)/n),
-      Math.round(box.reduce((s,p)=>s+p[2],0)/n)
-    ]
+    return[Math.round(box.reduce((s,p)=>s+p[0],0)/n),Math.round(box.reduce((s,p)=>s+p[1],0)/n),Math.round(box.reduce((s,p)=>s+p[2],0)/n)]
   })
-  while (palette.length < numColors) palette.push([0,0,0])
-  return palette.slice(0, numColors)
+  while(palette.length<numColors)palette.push([0,0,0])
+  return palette.slice(0,numColors)
 }
 
 function buildNearestLookup(palette) {
   const cache = new Map()
-  return (r, g, b) => {
-    const key = (r<<16)|(g<<8)|b
-    if (cache.has(key)) return cache.get(key)
-    let best=0, bestDist=Infinity
-    for (let i=0; i<palette.length; i++) {
+  return (r,g,b) => {
+    const key=(r<<16)|(g<<8)|b
+    if(cache.has(key))return cache.get(key)
+    let best=0,bestDist=Infinity
+    for(let i=0;i<palette.length;i++){
       const dr=r-palette[i][0],dg=g-palette[i][1],db=b-palette[i][2]
       const d=dr*dr*2+dg*dg*4+db*db
-      if (d<bestDist){bestDist=d;best=i}
+      if(d<bestDist){bestDist=d;best=i}
     }
-    cache.set(key, best)
-    return best
+    cache.set(key,best);return best
   }
 }
 
 // ---- GIF 인코더 ----
-function encodeAnimatedGIF(rgbFrames, w, h, delayMs, loopCount, palette, nearest, paletteSize) {
+function encodeAnimatedGIF(rgbFrames, w, h, delayMs, loopCount, palette, nearest, paletteSize, dither) {
   const parts = []
   parts.push(Buffer.from('GIF89a'))
-
-  // 팔레트 크기를 2의 거듭제곱으로 맞추기
-  const palExp = Math.ceil(Math.log2(Math.max(paletteSize, 2))) - 1  // 0~7
-  const palCount = 1 << (palExp + 1)  // 실제 팔레트 항목 수
-  const palBuf = Buffer.alloc(palCount * 3)
-  for (let i=0; i<palette.length && i<palCount; i++) {
-    palBuf[i*3]=palette[i][0]; palBuf[i*3+1]=palette[i][1]; palBuf[i*3+2]=palette[i][2]
+  const palExp = Math.ceil(Math.log2(Math.max(paletteSize,2)))-1
+  const palCount = 1<<(palExp+1)
+  const palBuf = Buffer.alloc(palCount*3)
+  for(let i=0;i<palette.length&&i<palCount;i++){
+    palBuf[i*3]=palette[i][0];palBuf[i*3+1]=palette[i][1];palBuf[i*3+2]=palette[i][2]
   }
+  const lsd=Buffer.alloc(7)
+  lsd.writeUInt16LE(w,0);lsd.writeUInt16LE(h,2)
+  lsd[4]=0xF0|palExp;lsd[5]=0;lsd[6]=0
+  parts.push(lsd);parts.push(palBuf)
+  parts.push(Buffer.from([0x21,0xFF,0x0B,0x4E,0x45,0x54,0x53,0x43,0x41,0x50,0x45,0x32,0x2E,0x30,0x03,0x01,loopCount&0xFF,(loopCount>>8)&0xFF,0x00]))
+  const delay=Math.max(2,Math.round(delayMs/10))
+  const lzwMin=Math.max(2,palExp+1)
 
-  const lsd = Buffer.alloc(7)
-  lsd.writeUInt16LE(w,0); lsd.writeUInt16LE(h,2)
-  lsd[4] = 0xF0 | palExp  // global color table flag + size
-  lsd[5]=0; lsd[6]=0
-  parts.push(lsd)
-  parts.push(palBuf)
-
-  // Netscape loop
-  parts.push(Buffer.from([
-    0x21,0xFF,0x0B,
-    0x4E,0x45,0x54,0x53,0x43,0x41,0x50,0x45,0x32,0x2E,0x30,
-    0x03,0x01, loopCount&0xFF,(loopCount>>8)&0xFF, 0x00
-  ]))
-
-  const delay = Math.max(2, Math.round(delayMs/10))
-  const lzwMin = Math.max(2, palExp + 1)  // LZW 최소 코드 크기
-
-  for (const rgb of rgbFrames) {
-    parts.push(Buffer.from([0x21,0xF9,0x04,0x00, delay&0xFF,(delay>>8)&0xFF, 0x00,0x00]))
-
-    const imgDesc = Buffer.alloc(10)
+  for(const rgb of rgbFrames){
+    parts.push(Buffer.from([0x21,0xF9,0x04,0x00,delay&0xFF,(delay>>8)&0xFF,0x00,0x00]))
+    const imgDesc=Buffer.alloc(10)
     imgDesc[0]=0x2C
-    imgDesc.writeUInt16LE(0,1); imgDesc.writeUInt16LE(0,3)
-    imgDesc.writeUInt16LE(w,5); imgDesc.writeUInt16LE(h,7)
+    imgDesc.writeUInt16LE(0,1);imgDesc.writeUInt16LE(0,3)
+    imgDesc.writeUInt16LE(w,5);imgDesc.writeUInt16LE(h,7)
     imgDesc[9]=0x00
     parts.push(imgDesc)
 
-    // Floyd-Steinberg 디더링
-    const indices = new Uint8Array(w * h)
-    const errR = new Float32Array((w+1)*(h+1))
-    const errG = new Float32Array((w+1)*(h+1))
-    const errB = new Float32Array((w+1)*(h+1))
+    const indices=new Uint8Array(w*h)
 
-    for (let y=0; y<h; y++) {
-      for (let x=0; x<w; x++) {
-        const pi=(y*w+x)*3
-        const r=Math.max(0,Math.min(255, rgb[pi]  +errR[y*(w+1)+x]))
-        const g=Math.max(0,Math.min(255, rgb[pi+1]+errG[y*(w+1)+x]))
-        const b=Math.max(0,Math.min(255, rgb[pi+2]+errB[y*(w+1)+x]))
-        const idx=nearest(Math.round(r),Math.round(g),Math.round(b))
-        indices[y*w+x]=idx
-        const qr=r-palette[idx][0],qg=g-palette[idx][1],qb=b-palette[idx][2]
-        if(x+1<w)  {errR[y*(w+1)+x+1]+=qr*7/16;errG[y*(w+1)+x+1]+=qg*7/16;errB[y*(w+1)+x+1]+=qb*7/16}
-        if(y+1<h){
-          if(x>0)  {errR[(y+1)*(w+1)+x-1]+=qr*3/16;errG[(y+1)*(w+1)+x-1]+=qg*3/16;errB[(y+1)*(w+1)+x-1]+=qb*3/16}
-                    errR[(y+1)*(w+1)+x]  +=qr*5/16;errG[(y+1)*(w+1)+x]  +=qg*5/16;errB[(y+1)*(w+1)+x]  +=qb*5/16
-          if(x+1<w){errR[(y+1)*(w+1)+x+1]+=qr*1/16;errG[(y+1)*(w+1)+x+1]+=qg*1/16;errB[(y+1)*(w+1)+x+1]+=qb*1/16}
+    if (dither) {
+      // Floyd-Steinberg 디더링
+      const errR=new Float32Array((w+1)*(h+1))
+      const errG=new Float32Array((w+1)*(h+1))
+      const errB=new Float32Array((w+1)*(h+1))
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          const pi=(y*w+x)*3
+          const r=Math.max(0,Math.min(255,rgb[pi]  +errR[y*(w+1)+x]))
+          const g=Math.max(0,Math.min(255,rgb[pi+1]+errG[y*(w+1)+x]))
+          const b=Math.max(0,Math.min(255,rgb[pi+2]+errB[y*(w+1)+x]))
+          const idx=nearest(Math.round(r),Math.round(g),Math.round(b))
+          indices[y*w+x]=idx
+          const qr=r-palette[idx][0],qg=g-palette[idx][1],qb=b-palette[idx][2]
+          if(x+1<w)  {errR[y*(w+1)+x+1]+=qr*7/16;errG[y*(w+1)+x+1]+=qg*7/16;errB[y*(w+1)+x+1]+=qb*7/16}
+          if(y+1<h){
+            if(x>0)  {errR[(y+1)*(w+1)+x-1]+=qr*3/16;errG[(y+1)*(w+1)+x-1]+=qg*3/16;errB[(y+1)*(w+1)+x-1]+=qb*3/16}
+                      errR[(y+1)*(w+1)+x]  +=qr*5/16;errG[(y+1)*(w+1)+x]  +=qg*5/16;errB[(y+1)*(w+1)+x]  +=qb*5/16
+            if(x+1<w){errR[(y+1)*(w+1)+x+1]+=qr*1/16;errG[(y+1)*(w+1)+x+1]+=qg*1/16;errB[(y+1)*(w+1)+x+1]+=qb*1/16}
+          }
         }
+      }
+    } else {
+      // 디더링 없음 — 단순 최근접 색상 매핑
+      for(let i=0;i<w*h;i++){
+        const pi=i*3
+        indices[i]=nearest(rgb[pi],rgb[pi+1],rgb[pi+2])
       }
     }
 
     parts.push(Buffer.from([lzwMin]))
-    parts.push(lzwEncode(indices, lzwMin))
+    parts.push(lzwEncode(indices,lzwMin))
     parts.push(Buffer.from([0x00]))
   }
-
   parts.push(Buffer.from([0x3B]))
   return Buffer.concat(parts)
 }
 
-// ---- LZW 인코더 ----
-function lzwEncode(indices, minCodeSize) {
-  const clearCode = 1 << minCodeSize
-  const eofCode = clearCode + 1
-  let codeSize = minCodeSize + 1, nextCode = eofCode + 1
-  const table = new Map()
-  const initTable = () => { table.clear(); codeSize = minCodeSize + 1; nextCode = eofCode + 1 }
-  let bitBuf=0, bitLen=0
-  const output=[], block=[]
-  const flushBlock = () => {
-    if (block.length > 0) { output.push(block.length); for (const b of block) output.push(b); block.length=0 }
+function lzwEncode(indices,minCodeSize){
+  const clearCode=1<<minCodeSize,eofCode=clearCode+1
+  let codeSize=minCodeSize+1,nextCode=eofCode+1
+  const table=new Map()
+  const initTable=()=>{table.clear();codeSize=minCodeSize+1;nextCode=eofCode+1}
+  let bitBuf=0,bitLen=0
+  const output=[],block=[]
+  const flushBlock=()=>{
+    if(block.length>0){output.push(block.length);for(const b of block)output.push(b);block.length=0}
   }
-  const writeBit = (code) => {
-    bitBuf |= (code << bitLen); bitLen += codeSize
-    while (bitLen >= 8) {
-      block.push(bitBuf & 0xFF); bitBuf=(bitBuf>>8)>>>0; bitLen-=8
-      if (block.length===255) flushBlock()
+  const writeBit=(code)=>{
+    bitBuf|=(code<<bitLen);bitLen+=codeSize
+    while(bitLen>=8){block.push(bitBuf&0xFF);bitBuf=(bitBuf>>8)>>>0;bitLen-=8;if(block.length===255)flushBlock()}
+  }
+  initTable();writeBit(clearCode)
+  let str=''+indices[0]
+  for(let i=1;i<indices.length;i++){
+    const next=str+'|'+indices[i]
+    if(table.has(next)){str=next}
+    else{
+      writeBit(str.includes('|')?table.get(str):parseInt(str))
+      if(nextCode<4096){table.set(next,nextCode++);if(nextCode>(1<<codeSize)&&codeSize<12)codeSize++}
+      else{writeBit(clearCode);initTable()}
+      str=''+indices[i]
     }
   }
-  initTable(); writeBit(clearCode)
-  let str = '' + indices[0]
-  for (let i=1; i<indices.length; i++) {
-    const next = str + '|' + indices[i]
-    if (table.has(next)) {
-      str = next
-    } else {
-      writeBit(str.includes('|') ? table.get(str) : parseInt(str))
-      if (nextCode < 4096) {
-        table.set(next, nextCode++)
-        if (nextCode > (1<<codeSize) && codeSize < 12) codeSize++
-      } else { writeBit(clearCode); initTable() }
-      str = '' + indices[i]
-    }
-  }
-  writeBit(str.includes('|') ? table.get(str) : parseInt(str))
+  writeBit(str.includes('|')?table.get(str):parseInt(str))
   writeBit(eofCode)
-  if (bitLen > 0) block.push(bitBuf & 0xFF)
+  if(bitLen>0)block.push(bitBuf&0xFF)
   flushBlock()
   return Buffer.from(output)
 }
 
-ipcMain.handle('save-dialog', async (event, { tmpPath, format }) => {
-  const isGif = format === 'gif'
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: '저장 위치 선택',
-    defaultPath: isGif ? 'animated.gif' : 'animated.webp',
-    filters: isGif ? [{name:'Animated GIF',extensions:['gif']}] : [{name:'Animated WebP',extensions:['webp']}]
+ipcMain.handle('save-dialog',async(event,{tmpPath,format})=>{
+  const isGif=format==='gif'
+  const result=await dialog.showSaveDialog(mainWindow,{
+    title:'저장 위치 선택',
+    defaultPath:isGif?'animated.gif':'animated.webp',
+    filters:isGif?[{name:'Animated GIF',extensions:['gif']}]:[{name:'Animated WebP',extensions:['webp']}]
   })
-  if (result.canceled) return { saved: false }
-  fs.copyFileSync(tmpPath, result.filePath)
-  try { fs.unlinkSync(tmpPath) } catch {}
-  return { saved: true, filePath: result.filePath }
+  if(result.canceled)return{saved:false}
+  fs.copyFileSync(tmpPath,result.filePath)
+  try{fs.unlinkSync(tmpPath)}catch{}
+  return{saved:true,filePath:result.filePath}
 })
 
-ipcMain.handle('open-file', async (event, filePath) => { shell.showItemInFolder(filePath) })
-ipcMain.handle('get-image-size', async (event, filePath) => {
-  try { const sharp=require('sharp'); const meta=await sharp(filePath).metadata(); return {width:meta.width,height:meta.height} }
-  catch { return null }
+ipcMain.handle('open-file',async(event,filePath)=>{shell.showItemInFolder(filePath)})
+ipcMain.handle('get-image-size',async(event,filePath)=>{
+  try{const sharp=require('sharp');const meta=await sharp(filePath).metadata();return{width:meta.width,height:meta.height}}
+  catch{return null}
 })
 
-// ---- Animated WebP builder ----
-function buildAnimatedWebP(frameBufs, delayMs, loopCount, canvasW, canvasH) {
+function buildAnimatedWebP(frameBufs,delayMs,loopCount,canvasW,canvasH){
   function u32le(n){const b=Buffer.alloc(4);b.writeUInt32LE(n>>>0,0);return b}
   function u24le(n){return Buffer.from([n&0xff,(n>>8)&0xff,(n>>16)&0xff])}
   function u16le(n){return Buffer.from([n&0xff,(n>>8)&0xff])}
@@ -306,7 +281,7 @@ function buildAnimatedWebP(frameBufs, delayMs, loopCount, canvasW, canvasH) {
         if(cid==='VP8 '||cid==='VP8L'){bc=chunk(cid,src.slice(pos+8,pos+8+csz));break}
         pos+=8+csz+(csz%2)
       }
-    } else {bc=chunk(fid,src.slice(20,20+fsz))}
+    }else{bc=chunk(fid,src.slice(20,20+fsz))}
     if(!bc)return null
     return chunk('ANMF',Buffer.concat([u24le(0),u24le(0),u24le(W-1),u24le(H-1),u24le(Math.round(delayMs)),Buffer.from([0x00]),bc]))
   }).filter(Boolean)

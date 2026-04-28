@@ -23,24 +23,30 @@ const errorBar = document.getElementById('error-bar')
 const fmtBtns = document.querySelectorAll('.fmt-btn')
 const paletteSelect = document.getElementById('palette-select')
 const paletteCtrl = document.getElementById('palette-ctrl')
+const blurInput = document.getElementById('blur-input')
+const blurVal = document.getElementById('blur-val')
+const blurCtrl = document.getElementById('blur-ctrl')
+const ditherCheck = document.getElementById('dither-check')
+const ditherCtrl = document.getElementById('dither-ctrl')
 
 let files = []
 let lastTmpPath = null
 let lastFormat = 'webp'
 let lastObjectUrl = null
 
-// 포맷 토글
+const gifOnlyEls = [paletteCtrl, blurCtrl, ditherCtrl]
+
 fmtBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     fmtBtns.forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     lastFormat = btn.dataset.fmt
-    // GIF 전용 옵션 표시/숨김
-    paletteCtrl.classList.toggle('visible', lastFormat === 'gif')
+    gifOnlyEls.forEach(el => el.classList.toggle('visible', lastFormat === 'gif'))
   })
 })
 
 qualityInput.addEventListener('input', () => { qualityVal.textContent = qualityInput.value })
+blurInput.addEventListener('input', () => { blurVal.textContent = blurInput.value })
 
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag') })
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'))
@@ -129,6 +135,8 @@ convertBtn.addEventListener('click', async () => {
   const outW = parseInt(widthInput.value) || null
   const outH = parseInt(heightInput.value) || null
   const paletteSize = parseInt(paletteSelect.value) || 256
+  const blurSigma = parseFloat(blurInput.value) || 0
+  const dither = ditherCheck.checked
 
   const filePaths = files.map(f => f.path).filter(Boolean)
   if (filePaths.length !== files.length) {
@@ -157,7 +165,7 @@ convertBtn.addEventListener('click', async () => {
     filePaths, fps, loopCount, quality,
     width: outW, height: outH,
     format: lastFormat,
-    paletteSize
+    paletteSize, blurSigma, dither
   })
 
   progressFill.style.width = '100%'
