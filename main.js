@@ -64,42 +64,35 @@ async function buildWebP(event, sharp, filePaths, loopCount, quality, width, hei
 }
 
 async function buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs) {
-  let GifEncoder
-  try { GifEncoder = require('gifencoder') } catch (e) { throw new Error('gifencoder 모듈 로드 실패: ' + e.message) }
+  let GIFEncoder
+  try { GIFEncoder = require('gif-encoder-2') } catch (e) { throw new Error('gif-encoder-2 모듈 로드 실패: ' + e.message) }
 
   const firstMeta = await sharp(filePaths[0]).metadata()
   const W = width || firstMeta.width
   const H = height || firstMeta.height
 
-  const encoder = new GifEncoder(W, H)
-  const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.gif`)
-  const stream = fs.createWriteStream(tmpPath)
-  encoder.createReadStream().pipe(stream)
-  encoder.start()
-  encoder.setRepeat(loopCount === 0 ? 0 : loopCount)
+  const encoder = new GIFEncoder(W, H, 'neuquant', true)
   encoder.setDelay(delayMs)
+  encoder.setRepeat(loopCount === 0 ? 0 : loopCount)
   encoder.setQuality(Math.max(1, Math.round(1 + (100 - quality) / 100 * 19)))
+  encoder.start()
 
   for (let i = 0; i < filePaths.length; i++) {
     event.sender.send('progress', { step: 'load', index: i, total: filePaths.length })
+    // sharp로 RGBA raw buffer 추출 — canvas 불필요
     const rawBuf = await sharp(filePaths[i])
       .resize(W, H, { fit: 'fill' })
       .ensureAlpha()
       .raw()
       .toBuffer()
-    const pixels = new Uint8ClampedArray(rawBuf)
-    const fakeCtx = { getImageData: () => ({ data: pixels }) }
-    encoder.addFrame(fakeCtx)
+    encoder.addFrame(rawBuf)
   }
 
   encoder.finish()
-  await new Promise((resolve, reject) => {
-    stream.on('finish', resolve)
-    stream.on('error', reject)
-  })
-
-  const stat = fs.statSync(tmpPath)
-  return { success: true, tmpPath, frameCount: filePaths.length, size: stat.size, format: 'gif' }
+  const gifBuf = encoder.out.getData()
+  const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.gif`)
+  fs.writeFileSync(tmpPath, gifBuf)
+  return { success: true, tmpPath, frameCount: filePaths.length, size: gifBuf.length, format: 'gif' }
 }
 
 ipcMain.handle('save-dialog', async (event, { tmpPath, format }) => {
