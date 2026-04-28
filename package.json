@@ -1,7 +1,7 @@
 {
   "name": "seq2webp",
-  "version": "1.0.0",
-  "description": "Image sequence to animated WebP converter",
+  "version": "1.1.0",
+  "description": "Image sequence to animated WebP/GIF converter",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -12,7 +12,8 @@
     "electron-builder": "^24.13.3"
   },
   "dependencies": {
-    "sharp": "^0.33.4"
+    "sharp": "^0.33.4",
+    "gifencoder": "^2.0.1"
   },
   "build": {
     "appId": "com.geolabs.seq2webp",
@@ -32,6 +33,6 @@
       "node_modules/**/*"
     ],
     "asar": true,
-    "asarUnpack": ["node_modules/sharp/**/*"]
+    "asarUnpack": ["node_modules/sharp/**/*", "node_modules/gifencoder/**/*"]
   }
 }

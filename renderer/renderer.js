@@ -1,4 +1,4 @@
-/* renderer.js — runs in the browser context, talks to main via window.api */
+/* renderer.js */
 
 const dropZone = document.getElementById('drop-zone')
 const fileInput = document.getElementById('file-input')
@@ -20,14 +20,24 @@ const previewImg = document.getElementById('preview-img')
 const previewEmpty = document.getElementById('preview-empty')
 const outputInfo = document.getElementById('output-info')
 const errorBar = document.getElementById('error-bar')
+const fmtBtns = document.querySelectorAll('.fmt-btn')
 
 let files = []
 let lastTmpPath = null
+let lastFormat = 'webp'
 let lastObjectUrl = null
+
+// Format toggle
+fmtBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    fmtBtns.forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    lastFormat = btn.dataset.fmt
+  })
+})
 
 qualityInput.addEventListener('input', () => { qualityVal.textContent = qualityInput.value })
 
-// --- Drag & Drop ---
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag') })
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'))
 dropZone.addEventListener('drop', e => {
@@ -35,7 +45,6 @@ dropZone.addEventListener('drop', e => {
   handleFiles([...e.dataTransfer.files])
 })
 fileInput.addEventListener('change', e => handleFiles([...e.target.files]))
-
 clearBtn.addEventListener('click', reset)
 
 function reset() {
@@ -63,12 +72,8 @@ function naturalSort(a, b) {
 function handleFiles(newFiles) {
   hideError()
   const allowed = ['png','jpg','jpeg','tif','tiff','webp','bmp']
-  const valid = newFiles.filter(f => {
-    const ext = f.name.split('.').pop().toLowerCase()
-    return allowed.includes(ext)
-  })
+  const valid = newFiles.filter(f => allowed.includes(f.name.split('.').pop().toLowerCase()))
   if (!valid.length) { showError('지원하는 이미지 파일이 없습니다.'); return }
-
   files = [...files, ...valid].sort(naturalSort)
   renderList()
   convertBtn.disabled = files.length < 2
@@ -82,15 +87,12 @@ function renderList() {
   files.forEach((f, i) => {
     const item = document.createElement('div')
     item.className = 'file-item'
-
     const num = document.createElement('span')
     num.className = 'file-num'
     num.textContent = i + 1
-
     const ext = f.name.split('.').pop().toLowerCase()
     const isTiff = ['tif','tiff'].includes(ext)
     let thumb
-
     if (!isTiff && f instanceof File) {
       thumb = document.createElement('img')
       thumb.className = 'file-thumb'
@@ -102,11 +104,9 @@ function renderList() {
       thumb.className = 'file-ext-badge'
       thumb.textContent = ext.toUpperCase()
     }
-
     const name = document.createElement('span')
     name.className = 'file-name'
     name.textContent = f.name
-
     item.appendChild(num)
     item.appendChild(thumb)
     item.appendChild(name)
@@ -115,7 +115,6 @@ function renderList() {
   fileCount.textContent = `${files.length}개 파일`
 }
 
-// --- Convert ---
 convertBtn.addEventListener('click', async () => {
   if (files.length < 2) return
   hideError()
@@ -126,7 +125,6 @@ convertBtn.addEventListener('click', async () => {
   const outW = parseInt(widthInput.value) || null
   const outH = parseInt(heightInput.value) || null
 
-  // Get file paths (only works in Electron — File objects from Electron have .path)
   const filePaths = files.map(f => f.path).filter(Boolean)
   if (filePaths.length !== files.length) {
     showError('파일 경로를 읽을 수 없습니다. 파일을 다시 선택해주세요.')
@@ -142,22 +140,18 @@ convertBtn.addEventListener('click', async () => {
   window.api.removeProgressListener()
   window.api.onProgress(({ step, index, total }) => {
     if (step === 'load') {
-      const pct = Math.round((index / total) * 85)
-      progressFill.style.width = pct + '%'
+      progressFill.style.width = Math.round((index / total) * 85) + '%'
       progressLabel.textContent = `이미지 로딩 중 (${index + 1} / ${total})`
     } else if (step === 'encode') {
       progressFill.style.width = '90%'
-      progressLabel.textContent = 'WebP 합성 중...'
+      progressLabel.textContent = `${lastFormat.toUpperCase()} 합성 중...`
     }
   })
 
   const result = await window.api.convertFrames({
-    filePaths,
-    fps,
-    loopCount,
-    quality,
-    width: outW,
-    height: outH
+    filePaths, fps, loopCount, quality,
+    width: outW, height: outH,
+    format: lastFormat
   })
 
   progressFill.style.width = '100%'
@@ -169,11 +163,9 @@ convertBtn.addEventListener('click', async () => {
     return
   }
 
-  // Show preview
   lastTmpPath = result.tmpPath
   if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl)
 
-  // Load preview via file URL
   const fileUrl = 'file://' + result.tmpPath.replace(/\\/g, '/')
   previewImg.src = fileUrl + '?t=' + Date.now()
   previewImg.style.display = 'block'
@@ -181,19 +173,17 @@ convertBtn.addEventListener('click', async () => {
 
   const sizeKB = Math.round(result.size / 1024)
   const sizeLabel = sizeKB > 1024 ? (sizeKB / 1024).toFixed(1) + ' MB' : sizeKB + ' KB'
-  outputInfo.textContent = `${result.frameCount}프레임 · ${fps}fps · ${sizeLabel}`
+  outputInfo.textContent = `${result.frameCount}프레임 · ${fps}fps · ${result.format.toUpperCase()} · ${sizeLabel}`
   outputInfo.style.display = 'block'
 
   saveBtn.style.display = 'inline'
   convertBtn.disabled = false
-
   setTimeout(() => { progressWrap.style.display = 'none'; progressFill.style.width = '0%' }, 1200)
 })
 
-// --- Save ---
 saveBtn.addEventListener('click', async () => {
   if (!lastTmpPath) return
-  const result = await window.api.saveDialog(lastTmpPath)
+  const result = await window.api.saveDialog({ tmpPath: lastTmpPath, format: lastFormat })
   if (result.saved) {
     lastTmpPath = null
     saveBtn.style.display = 'none'

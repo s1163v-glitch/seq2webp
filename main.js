@@ -7,16 +7,15 @@ let mainWindow
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 780,
+    width: 820,
     height: 680,
-    minWidth: 620,
+    minWidth: 660,
     minHeight: 520,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     },
-    titleBarStyle: 'default',
     title: 'Seq2WebP',
     backgroundColor: '#ffffff',
     show: false
@@ -31,49 +30,90 @@ app.whenReady().then(createWindow)
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 
-// --- IPC handlers ---
+// --- IPC ---
 
 ipcMain.handle('convert-frames', async (event, opts) => {
-  const { filePaths, fps, loopCount, quality, width, height } = opts
+  const { filePaths, fps, loopCount, quality, width, height, format } = opts
   const delayMs = Math.round(1000 / fps)
-
   try {
     let sharp
-    try { sharp = require('sharp') }
-    catch (e) { throw new Error('sharp 모듈을 로드할 수 없습니다: ' + e.message) }
-
-    const frames = []
-    for (let i = 0; i < filePaths.length; i++) {
-      event.sender.send('progress', { step: 'load', index: i, total: filePaths.length })
-      const img = sharp(filePaths[i])
-      let resized = img
-      if (width && height) resized = img.resize(width, height, { fit: 'fill' })
-      const webpBuf = await resized.webp({ quality }).toBuffer()
-      frames.push(webpBuf)
+    try { sharp = require('sharp') } catch (e) { throw new Error('sharp 모듈 로드 실패: ' + e.message) }
+    if (format === 'gif') {
+      return await buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs)
+    } else {
+      return await buildWebP(event, sharp, filePaths, loopCount, quality, width, height, delayMs)
     }
-
-    event.sender.send('progress', { step: 'encode', index: 0, total: frames.length })
-
-    const animBuf = buildAnimatedWebP(frames, delayMs, loopCount, width, height)
-
-    const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.webp`)
-    fs.writeFileSync(tmpPath, animBuf)
-
-    return { success: true, tmpPath, frameCount: frames.length, size: animBuf.length }
   } catch (err) {
     return { success: false, error: err.message }
   }
 })
 
-ipcMain.handle('save-dialog', async (event, tmpPath) => {
+async function buildWebP(event, sharp, filePaths, loopCount, quality, width, height, delayMs) {
+  const frames = []
+  for (let i = 0; i < filePaths.length; i++) {
+    event.sender.send('progress', { step: 'load', index: i, total: filePaths.length })
+    const img = sharp(filePaths[i])
+    let resized = (width && height) ? img.resize(width, height, { fit: 'fill' }) : img
+    frames.push(await resized.webp({ quality }).toBuffer())
+  }
+  event.sender.send('progress', { step: 'encode', index: 0, total: frames.length })
+  const animBuf = buildAnimatedWebP(frames, delayMs, loopCount, width, height)
+  const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.webp`)
+  fs.writeFileSync(tmpPath, animBuf)
+  return { success: true, tmpPath, frameCount: frames.length, size: animBuf.length, format: 'webp' }
+}
+
+async function buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs) {
+  let GifEncoder
+  try { GifEncoder = require('gifencoder') } catch (e) { throw new Error('gifencoder 모듈 로드 실패: ' + e.message) }
+
+  const firstMeta = await sharp(filePaths[0]).metadata()
+  const W = width || firstMeta.width
+  const H = height || firstMeta.height
+
+  const encoder = new GifEncoder(W, H)
+  const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.gif`)
+  const stream = fs.createWriteStream(tmpPath)
+  encoder.createReadStream().pipe(stream)
+  encoder.start()
+  encoder.setRepeat(loopCount === 0 ? 0 : loopCount)
+  encoder.setDelay(delayMs)
+  encoder.setQuality(Math.max(1, Math.round(1 + (100 - quality) / 100 * 19)))
+
+  for (let i = 0; i < filePaths.length; i++) {
+    event.sender.send('progress', { step: 'load', index: i, total: filePaths.length })
+    const rawBuf = await sharp(filePaths[i])
+      .resize(W, H, { fit: 'fill' })
+      .ensureAlpha()
+      .raw()
+      .toBuffer()
+    const pixels = new Uint8ClampedArray(rawBuf)
+    const fakeCtx = { getImageData: () => ({ data: pixels }) }
+    encoder.addFrame(fakeCtx)
+  }
+
+  encoder.finish()
+  await new Promise((resolve, reject) => {
+    stream.on('finish', resolve)
+    stream.on('error', reject)
+  })
+
+  const stat = fs.statSync(tmpPath)
+  return { success: true, tmpPath, frameCount: filePaths.length, size: stat.size, format: 'gif' }
+}
+
+ipcMain.handle('save-dialog', async (event, { tmpPath, format }) => {
+  const isGif = format === 'gif'
   const result = await dialog.showSaveDialog(mainWindow, {
     title: '저장 위치 선택',
-    defaultPath: 'animated.webp',
-    filters: [{ name: 'Animated WebP', extensions: ['webp'] }]
+    defaultPath: isGif ? 'animated.gif' : 'animated.webp',
+    filters: isGif
+      ? [{ name: 'Animated GIF', extensions: ['gif'] }]
+      : [{ name: 'Animated WebP', extensions: ['webp'] }]
   })
   if (result.canceled) return { saved: false }
   fs.copyFileSync(tmpPath, result.filePath)
-  fs.unlinkSync(tmpPath)
+  try { fs.unlinkSync(tmpPath) } catch {}
   return { saved: true, filePath: result.filePath }
 })
 
@@ -89,39 +129,24 @@ ipcMain.handle('get-image-size', async (event, filePath) => {
   } catch { return null }
 })
 
-// --- Animated WebP builder (pure JS, same as renderer) ---
+// --- Animated WebP builder ---
 function buildAnimatedWebP(frameBufs, delayMs, loopCount, canvasW, canvasH) {
-  function u32le(n) {
-    const b = Buffer.alloc(4)
-    b.writeUInt32LE(n >>> 0, 0)
-    return b
-  }
-  function u24le(n) {
-    return Buffer.from([n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff])
-  }
-  function u16le(n) {
-    return Buffer.from([n & 0xff, (n >> 8) & 0xff])
-  }
+  function u32le(n) { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0, 0); return b }
+  function u24le(n) { return Buffer.from([n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff]) }
+  function u16le(n) { return Buffer.from([n & 0xff, (n >> 8) & 0xff]) }
   function chunk(id, data) {
-    const idBuf = Buffer.from(id, 'ascii')
-    const sizeBuf = u32le(data.length)
     const pad = data.length % 2 !== 0 ? Buffer.from([0]) : Buffer.alloc(0)
-    return Buffer.concat([idBuf, sizeBuf, data, pad])
+    return Buffer.concat([Buffer.from(id, 'ascii'), u32le(data.length), data, pad])
   }
 
-  // Get canvas dimensions from first frame if not specified
   let W = canvasW, H = canvasH
   if (!W || !H) {
-    // Parse width/height from VP8 bitstream of first frame
     const src = frameBufs[0]
-    // Try to read from VP8 bitstream at offset after RIFF/WEBP/VP8 headers
-    // VP8 frame: keyframe starts with 0x9D 0x01 0x2A then width/height
     let off = 12
     while (off < src.length - 8) {
       const cid = src.slice(off, off + 4).toString('ascii')
       const csz = src.readUInt32LE(off + 4)
       if (cid === 'VP8 ') {
-        // VP8 bitstream: byte 6 = keyframe marker, 7-9 = start code, 10-11=w, 12-13=h
         const bs = src.slice(off + 8)
         if (bs[3] === 0x9d && bs[4] === 0x01 && bs[5] === 0x2a) {
           W = bs.readUInt16LE(6) & 0x3fff
@@ -131,67 +156,31 @@ function buildAnimatedWebP(frameBufs, delayMs, loopCount, canvasW, canvasH) {
       }
       off += 8 + csz + (csz % 2)
     }
-    if (!W) W = 800
-    if (!H) H = 600
+    if (!W) W = 800; if (!H) H = 600
   }
 
-  const vp8xData = Buffer.concat([
-    Buffer.from([0x02, 0x00, 0x00, 0x00]),
-    u24le(W - 1),
-    u24le(H - 1)
-  ])
+  const vp8xData = Buffer.concat([Buffer.from([0x02, 0x00, 0x00, 0x00]), u24le(W - 1), u24le(H - 1)])
+  const animData = Buffer.concat([Buffer.from([0xff, 0xff, 0xff, 0xff]), u16le(loopCount)])
 
-  const animData = Buffer.concat([
-    Buffer.from([0xff, 0xff, 0xff, 0xff]),
-    u16le(loopCount)
-  ])
-
-  const anmfChunks = []
-  for (const src of frameBufs) {
-    // Extract inner VP8/VP8L chunk from single-frame WebP
-    let innerOff = 12
+  const anmfChunks = frameBufs.map(src => {
     let bitstreamChunk = null
-
-    const firstChunkId = src.slice(innerOff, innerOff + 4).toString('ascii')
-    const firstChunkSz = src.readUInt32LE(innerOff + 4)
-
-    if (firstChunkId === 'VP8X') {
-      let pos = innerOff + 8 + firstChunkSz + (firstChunkSz % 2)
+    const fid = src.slice(12, 16).toString('ascii')
+    const fsz = src.readUInt32LE(16)
+    if (fid === 'VP8X') {
+      let pos = 20 + fsz + (fsz % 2)
       while (pos < src.length - 8) {
         const cid = src.slice(pos, pos + 4).toString('ascii')
         const csz = src.readUInt32LE(pos + 4)
-        if (cid === 'VP8 ' || cid === 'VP8L') {
-          bitstreamChunk = chunk(cid, src.slice(pos + 8, pos + 8 + csz))
-          break
-        }
+        if (cid === 'VP8 ' || cid === 'VP8L') { bitstreamChunk = chunk(cid, src.slice(pos + 8, pos + 8 + csz)); break }
         pos += 8 + csz + (csz % 2)
       }
     } else {
-      bitstreamChunk = chunk(firstChunkId, src.slice(innerOff + 8, innerOff + 8 + firstChunkSz))
+      bitstreamChunk = chunk(fid, src.slice(20, 20 + fsz))
     }
+    if (!bitstreamChunk) return null
+    return chunk('ANMF', Buffer.concat([u24le(0), u24le(0), u24le(W - 1), u24le(H - 1), u24le(Math.round(delayMs)), Buffer.from([0x00]), bitstreamChunk]))
+  }).filter(Boolean)
 
-    if (!bitstreamChunk) continue
-
-    const anmfData = Buffer.concat([
-      u24le(0), u24le(0),
-      u24le(W - 1), u24le(H - 1),
-      u24le(Math.round(delayMs)),
-      Buffer.from([0x00]),
-      bitstreamChunk
-    ])
-    anmfChunks.push(chunk('ANMF', anmfData))
-  }
-
-  const webpPayload = Buffer.concat([
-    Buffer.from('WEBP', 'ascii'),
-    chunk('VP8X', vp8xData),
-    chunk('ANIM', animData),
-    ...anmfChunks
-  ])
-
-  return Buffer.concat([
-    Buffer.from('RIFF', 'ascii'),
-    u32le(webpPayload.length),
-    webpPayload
-  ])
+  const webpPayload = Buffer.concat([Buffer.from('WEBP'), chunk('VP8X', vp8xData), chunk('ANIM', animData), ...anmfChunks])
+  return Buffer.concat([Buffer.from('RIFF'), u32le(webpPayload.length), webpPayload])
 }
