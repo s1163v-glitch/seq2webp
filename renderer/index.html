@@ -55,90 +55,46 @@
   .main { display: flex; flex: 1; overflow: hidden; }
 
   .panel-left {
-    width: 300px;
-    flex-shrink: 0;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    width: 300px; flex-shrink: 0; background: var(--surface);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
   }
-
   .panel-section { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
-  .panel-section:last-child { border-bottom: none; }
-
   .section-title {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text3);
-    margin-bottom: 10px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text3); margin-bottom: 10px;
   }
 
   #drop-zone {
-    border: 1.5px dashed var(--border2);
-    border-radius: var(--radius);
-    padding: 20px 12px;
-    text-align: center;
-    cursor: pointer;
-    background: var(--bg);
-    transition: all 0.15s;
-    position: relative;
+    border: 1.5px dashed var(--border2); border-radius: var(--radius);
+    padding: 20px 12px; text-align: center; cursor: pointer;
+    background: var(--bg); transition: all 0.15s; position: relative;
   }
   #drop-zone.drag { border-color: var(--accent); background: var(--accent-light); }
-  #drop-zone input[type=file] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-  }
+  #drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
   .dz-icon { font-size: 22px; margin-bottom: 6px; }
   .dz-title { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
   .dz-sub { font-size: 11px; color: var(--text3); }
 
-  .file-list-wrap {
-    flex: 1; overflow-y: auto; padding: 8px;
-    display: flex; flex-direction: column; gap: 4px;
-  }
-  .file-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 5px 8px; border-radius: var(--radius-sm); background: var(--bg);
-  }
+  .file-list-wrap { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .file-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-sm); background: var(--bg); }
   .file-num { font-size: 10px; color: var(--text3); min-width: 18px; text-align: right; flex-shrink: 0; }
-  .file-thumb {
-    width: 28px; height: 28px; border-radius: 4px;
-    background: var(--surface2); object-fit: cover; flex-shrink: 0; border: 1px solid var(--border);
-  }
-  .file-ext-badge {
-    width: 28px; height: 28px; border-radius: 4px; background: var(--surface2);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 8px; font-weight: 700; color: var(--text2); flex-shrink: 0;
-  }
-  .file-name {
-    flex: 1; font-size: 11px; color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
+  .file-thumb { width: 28px; height: 28px; border-radius: 4px; background: var(--surface2); object-fit: cover; flex-shrink: 0; border: 1px solid var(--border); }
+  .file-ext-badge { width: 28px; height: 28px; border-radius: 4px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: var(--text2); flex-shrink: 0; }
+  .file-name { flex: 1; font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .file-list-footer {
     padding: 8px 14px; display: flex; justify-content: space-between; align-items: center;
     border-top: 1px solid var(--border); background: var(--surface);
   }
   .file-count { font-size: 11px; color: var(--text2); }
-  #clear-btn {
-    font-size: 11px; color: var(--danger);
-    background: none; border: none; cursor: pointer; padding: 3px 6px; border-radius: 4px;
-  }
+  #clear-btn { font-size: 11px; color: var(--danger); background: none; border: none; cursor: pointer; padding: 3px 6px; border-radius: 4px; }
   #clear-btn:hover { background: var(--danger-light); }
 
   .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 
   .settings-bar {
-    padding: 12px 18px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 14px;
-    align-items: flex-end;
-    flex-shrink: 0;
-    flex-wrap: wrap;
+    padding: 12px 18px; background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; gap: 14px; align-items: flex-end; flex-shrink: 0; flex-wrap: wrap;
   }
   .ctrl { display: flex; flex-direction: column; gap: 5px; }
   .ctrl label { font-size: 11px; color: var(--text2); }
@@ -152,19 +108,17 @@
   .ctrl-quality label { display: flex; justify-content: space-between; }
   .ctrl-quality input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
-  .format-toggle {
-    display: flex;
-    border: 1px solid var(--border2);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
+  .format-toggle { display: flex; border: 1px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; }
   .fmt-btn {
     flex: 1; padding: 5px 16px; font-size: 13px; font-weight: 500;
-    border: none; background: var(--bg); color: var(--text2); cursor: pointer;
-    transition: background 0.12s, color 0.12s;
+    border: none; background: var(--bg); color: var(--text2); cursor: pointer; transition: background 0.12s, color 0.12s;
   }
   .fmt-btn.active { background: var(--accent); color: #fff; }
   .fmt-btn:not(.active):hover { background: var(--surface2); }
+
+  /* GIF 전용 옵션 — GIF 선택 시에만 표시 */
+  .gif-only { display: none; }
+  .gif-only.visible { display: flex; }
 
   .preview-wrap {
     flex: 1; display: flex; align-items: center; justify-content: center;
@@ -173,19 +127,15 @@
   .preview-empty { text-align: center; color: var(--text3); pointer-events: none; }
   .preview-empty .empty-icon { font-size: 40px; margin-bottom: 10px; }
   .preview-empty p { font-size: 12px; }
-
   #preview-img {
-    max-width: 100%; max-height: 100%;
-    border-radius: var(--radius); border: 1px solid var(--border);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    display: none; object-fit: contain;
+    max-width: 100%; max-height: 100%; border-radius: var(--radius); border: 1px solid var(--border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06); display: none; object-fit: contain;
   }
 
   .bottom-bar {
     padding: 12px 18px; background: var(--surface); border-top: 1px solid var(--border);
     display: flex; align-items: center; gap: 10px; flex-shrink: 0;
   }
-
   #convert-btn {
     padding: 7px 22px; font-size: 13px; font-weight: 600;
     border-radius: var(--radius-sm); border: 1px solid var(--accent);
@@ -195,7 +145,6 @@
   #convert-btn:hover:not(:disabled) { opacity: 0.85; }
   #convert-btn:active:not(:disabled) { transform: scale(0.98); }
   #convert-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
   #save-btn {
     padding: 7px 18px; font-size: 13px; font-weight: 500;
     border-radius: var(--radius-sm); border: 1px solid var(--border2);
@@ -203,14 +152,11 @@
     transition: background 0.1s; display: none; white-space: nowrap; flex-shrink: 0;
   }
   #save-btn:hover { background: var(--surface2); }
-
   .progress-wrap { flex: 1; display: none; flex-direction: column; gap: 4px; }
   .progress-track { height: 3px; border-radius: 2px; background: var(--surface2); overflow: hidden; }
   .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.2s; }
   #progress-label { font-size: 11px; color: var(--text2); }
-
   #output-info { font-size: 11px; color: var(--text2); display: none; }
-
   #error-bar {
     padding: 8px 18px; background: var(--danger-light); color: var(--danger);
     font-size: 12px; border-top: 1px solid rgba(192,57,43,0.2); display: none; flex-shrink: 0;
@@ -277,6 +223,17 @@
       <div class="ctrl">
         <label>높이 (px)</label>
         <input type="number" id="height-input" min="1" max="8192" placeholder="원본">
+      </div>
+      <!-- GIF 전용: 팔레트 색상 수 -->
+      <div class="ctrl gif-only" id="palette-ctrl">
+        <label>팔레트 (GIF)</label>
+        <select id="palette-select">
+          <option value="16">16색</option>
+          <option value="32">32색</option>
+          <option value="64">64색</option>
+          <option value="128">128색</option>
+          <option value="256" selected>256색</option>
+        </select>
       </div>
       <div class="ctrl ctrl-quality">
         <label>화질 <span id="quality-val">85</span>%</label>

@@ -21,18 +21,22 @@ const previewEmpty = document.getElementById('preview-empty')
 const outputInfo = document.getElementById('output-info')
 const errorBar = document.getElementById('error-bar')
 const fmtBtns = document.querySelectorAll('.fmt-btn')
+const paletteSelect = document.getElementById('palette-select')
+const paletteCtrl = document.getElementById('palette-ctrl')
 
 let files = []
 let lastTmpPath = null
 let lastFormat = 'webp'
 let lastObjectUrl = null
 
-// Format toggle
+// 포맷 토글
 fmtBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     fmtBtns.forEach(b => b.classList.remove('active'))
     btn.classList.add('active')
     lastFormat = btn.dataset.fmt
+    // GIF 전용 옵션 표시/숨김
+    paletteCtrl.classList.toggle('visible', lastFormat === 'gif')
   })
 })
 
@@ -124,6 +128,7 @@ convertBtn.addEventListener('click', async () => {
   const quality = parseInt(qualityInput.value)
   const outW = parseInt(widthInput.value) || null
   const outH = parseInt(heightInput.value) || null
+  const paletteSize = parseInt(paletteSelect.value) || 256
 
   const filePaths = files.map(f => f.path).filter(Boolean)
   if (filePaths.length !== files.length) {
@@ -151,7 +156,8 @@ convertBtn.addEventListener('click', async () => {
   const result = await window.api.convertFrames({
     filePaths, fps, loopCount, quality,
     width: outW, height: outH,
-    format: lastFormat
+    format: lastFormat,
+    paletteSize
   })
 
   progressFill.style.width = '100%'
@@ -173,7 +179,8 @@ convertBtn.addEventListener('click', async () => {
 
   const sizeKB = Math.round(result.size / 1024)
   const sizeLabel = sizeKB > 1024 ? (sizeKB / 1024).toFixed(1) + ' MB' : sizeKB + ' KB'
-  outputInfo.textContent = `${result.frameCount}프레임 · ${fps}fps · ${result.format.toUpperCase()} · ${sizeLabel}`
+  const palLabel = lastFormat === 'gif' ? ` · ${paletteSize}색` : ''
+  outputInfo.textContent = `${result.frameCount}프레임 · ${fps}fps · ${result.format.toUpperCase()}${palLabel} · ${sizeLabel}`
   outputInfo.style.display = 'block'
 
   saveBtn.style.display = 'inline'
