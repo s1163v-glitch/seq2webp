@@ -68,8 +68,25 @@ async function buildGIF(event, sharp, filePaths, loopCount, quality, width, heig
   try { GIFEncoder = require('gif-encoder-2') } catch (e) { throw new Error('gif-encoder-2 모듈 로드 실패: ' + e.message) }
 
   const firstMeta = await sharp(filePaths[0]).metadata()
-  const W = width || firstMeta.width
-  const H = height || firstMeta.height
+
+  // GIF 스펙 최대 크기 제한 (65535px), 미입력시 원본 크기 사용
+  // 해상도가 너무 크면 자동으로 축소 (GIF는 고해상도에 부적합)
+  const MAX_GIF_SIZE = 1920
+  let W = width || firstMeta.width
+  let H = height || firstMeta.height
+
+  if (!width && !height) {
+    // 자동 축소: 긴 변이 MAX_GIF_SIZE 초과 시 비율 유지하며 축소
+    if (W > MAX_GIF_SIZE || H > MAX_GIF_SIZE) {
+      const ratio = Math.min(MAX_GIF_SIZE / W, MAX_GIF_SIZE / H)
+      W = Math.round(W * ratio)
+      H = Math.round(H * ratio)
+    }
+  }
+
+  // 짝수로 맞추기 (GIF 인코더 안정성)
+  W = W % 2 === 0 ? W : W - 1
+  H = H % 2 === 0 ? H : H - 1
 
   const encoder = new GIFEncoder(W, H, 'neuquant', true)
   encoder.setDelay(delayMs)
@@ -79,19 +96,19 @@ async function buildGIF(event, sharp, filePaths, loopCount, quality, width, heig
 
   for (let i = 0; i < filePaths.length; i++) {
     event.sender.send('progress', { step: 'load', index: i, total: filePaths.length })
-    // sharp로 RGBA raw buffer 추출 — canvas 불필요
     const rawBuf = await sharp(filePaths[i])
       .resize(W, H, { fit: 'fill' })
       .ensureAlpha()
       .raw()
       .toBuffer()
-    encoder.addFrame(rawBuf)
+    // gif-encoder-2는 Uint8Array를 요구함
+    encoder.addFrame(new Uint8Array(rawBuf))
   }
 
   encoder.finish()
   const gifBuf = encoder.out.getData()
   const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.gif`)
-  fs.writeFileSync(tmpPath, gifBuf)
+  fs.writeFileSync(tmpPath, Buffer.from(gifBuf))
   return { success: true, tmpPath, frameCount: filePaths.length, size: gifBuf.length, format: 'gif' }
 }
 
