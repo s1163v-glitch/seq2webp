@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, desktopCapturer, screen } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
@@ -7,8 +7,12 @@ let mainWindow
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 880, height: 680, minWidth: 700, minHeight: 520,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    width: 980, height: 720, minWidth: 780, minHeight: 560,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    },
     title: 'Seq2WebP', backgroundColor: '#ffffff', show: false
   })
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
@@ -20,6 +24,9 @@ app.whenReady().then(createWindow)
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 
+// ──────────────────────────────────────────
+// 이미지 시퀀스 → WebP/GIF 변환 (기존)
+// ──────────────────────────────────────────
 ipcMain.handle('convert-frames', async (event, opts) => {
   const { filePaths, fps, loopCount, quality, width, height, format, paletteSize, blurSigma, dither } = opts
   const delayMs = Math.round(1000 / fps)
@@ -65,7 +72,6 @@ async function buildGIF(event, sharp, filePaths, loopCount, quality, width, heig
   for (let i = 0; i < filePaths.length; i++) {
     event.sender.send('progress', { step: 'load', index: i, total: filePaths.length })
     let pipeline = sharp(filePaths[i]).resize(W, H, { fit: 'fill' })
-    // 블러 적용 (노이즈 감소)
     if (blurSigma > 0) pipeline = pipeline.blur(blurSigma)
     const buf = await pipeline.removeAlpha().raw().toBuffer()
     rgbFrames.push(buf)
@@ -80,7 +86,140 @@ async function buildGIF(event, sharp, filePaths, loopCount, quality, width, heig
   return { success: true, tmpPath, frameCount: filePaths.length, size: gifBuf.length, format: 'gif' }
 }
 
-// ---- Median Cut ----
+// ──────────────────────────────────────────
+// 영상 파일 → 프레임 추출 (ffmpeg)
+// ──────────────────────────────────────────
+ipcMain.handle('get-video-info', async (event, filePath) => {
+  try {
+    const ffmpeg = require('fluent-ffmpeg')
+    const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+    ffmpeg.setFfmpegPath(ffmpegPath)
+    return await new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(filePath, (err, meta) => {
+        if (err) return reject(err)
+        const vs = meta.streams.find(s => s.codec_type === 'video')
+        if (!vs) return reject(new Error('영상 스트림 없음'))
+        const fps = eval(vs.r_frame_rate) || 30
+        resolve({
+          width: vs.width,
+          height: vs.height,
+          fps: Math.round(fps * 10) / 10,
+          duration: Math.round(meta.format.duration * 10) / 10,
+          totalFrames: Math.round(meta.format.duration * fps)
+        })
+      })
+    })
+  } catch (err) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('extract-video-frames', async (event, { filePath, fps, startSec, endSec }) => {
+  try {
+    const ffmpeg = require('fluent-ffmpeg')
+    const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+    ffmpeg.setFfmpegPath(ffmpegPath)
+
+    const tmpDir = path.join(os.tmpdir(), `seq2webp_vid_${Date.now()}`)
+    fs.mkdirSync(tmpDir, { recursive: true })
+
+    await new Promise((resolve, reject) => {
+      let cmd = ffmpeg(filePath)
+      if (startSec > 0) cmd = cmd.seekInput(startSec)
+      if (endSec > 0) cmd = cmd.duration(endSec - startSec)
+      cmd
+        .outputOptions([`-vf fps=${fps}`, '-q:v 2'])
+        .output(path.join(tmpDir, 'frame_%06d.jpg'))
+        .on('progress', (p) => {
+          event.sender.send('progress', { step: 'extract', percent: Math.round(p.percent || 0) })
+        })
+        .on('end', resolve)
+        .on('error', reject)
+        .run()
+    })
+
+    const frames = fs.readdirSync(tmpDir)
+      .filter(f => f.endsWith('.jpg'))
+      .sort()
+      .map(f => path.join(tmpDir, f))
+
+    return { success: true, frames, tmpDir }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ──────────────────────────────────────────
+// 화면 녹화
+// ──────────────────────────────────────────
+ipcMain.handle('get-sources', async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: 320, height: 180 }
+  })
+  return sources.map(s => ({
+    id: s.id,
+    name: s.name,
+    thumbnail: s.thumbnail.toDataURL()
+  }))
+})
+
+let recordingFrameDir = null
+
+ipcMain.handle('save-recorded-frames', async (event, { frames, fps, loopCount, quality, width, height, format, paletteSize, blurSigma, dither }) => {
+  // 프레임 데이터(base64 PNG)를 임시 파일로 저장 후 변환
+  const tmpDir = path.join(os.tmpdir(), `seq2webp_rec_${Date.now()}`)
+  fs.mkdirSync(tmpDir, { recursive: true })
+
+  const filePaths = []
+  for (let i = 0; i < frames.length; i++) {
+    const buf = Buffer.from(frames[i].replace(/^data:image\/\w+;base64,/, ''), 'base64')
+    const fp = path.join(tmpDir, `frame_${String(i).padStart(6, '0')}.png`)
+    fs.writeFileSync(fp, buf)
+    filePaths.push(fp)
+  }
+
+  let sharp
+  try { sharp = require('sharp') } catch (e) { return { success: false, error: 'sharp 로드 실패' } }
+
+  const delayMs = Math.round(1000 / fps)
+  try {
+    let result
+    if (format === 'gif') {
+      result = await buildGIF(event, sharp, filePaths, loopCount, quality, width, height, delayMs, paletteSize || 256, blurSigma || 0, dither !== false)
+    } else {
+      result = await buildWebP(event, sharp, filePaths, loopCount, quality, width, height, delayMs)
+    }
+    // 임시 PNG들 정리
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch {}
+    return result
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('save-dialog', async (event, { tmpPath, format }) => {
+  const isGif = format === 'gif'
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '저장 위치 선택',
+    defaultPath: isGif ? 'animated.gif' : 'animated.webp',
+    filters: isGif ? [{ name: 'Animated GIF', extensions: ['gif'] }] : [{ name: 'Animated WebP', extensions: ['webp'] }]
+  })
+  if (result.canceled) return { saved: false }
+  fs.copyFileSync(tmpPath, result.filePath)
+  try { fs.unlinkSync(tmpPath) } catch {}
+  return { saved: true, filePath: result.filePath }
+})
+
+ipcMain.handle('open-file', async (event, filePath) => { shell.showItemInFolder(filePath) })
+ipcMain.handle('get-image-size', async (event, filePath) => {
+  try { const sharp = require('sharp'); const meta = await sharp(filePath).metadata(); return { width: meta.width, height: meta.height } }
+  catch { return null }
+})
+
+// ──────────────────────────────────────────
+// Median Cut & GIF 인코더 (기존 코드 유지)
+// ──────────────────────────────────────────
 function medianCutIterative(rgbBuf, numColors) {
   const total = rgbBuf.length / 3
   const step = Math.max(1, Math.floor(total / 8000))
@@ -128,7 +267,6 @@ function buildNearestLookup(palette) {
   }
 }
 
-// ---- GIF 인코더 ----
 function encodeAnimatedGIF(rgbFrames, w, h, delayMs, loopCount, palette, nearest, paletteSize, dither) {
   const parts = []
   parts.push(Buffer.from('GIF89a'))
@@ -154,11 +292,8 @@ function encodeAnimatedGIF(rgbFrames, w, h, delayMs, loopCount, palette, nearest
     imgDesc.writeUInt16LE(w,5);imgDesc.writeUInt16LE(h,7)
     imgDesc[9]=0x00
     parts.push(imgDesc)
-
     const indices=new Uint8Array(w*h)
-
     if (dither) {
-      // Floyd-Steinberg 디더링
       const errR=new Float32Array((w+1)*(h+1))
       const errG=new Float32Array((w+1)*(h+1))
       const errB=new Float32Array((w+1)*(h+1))
@@ -180,13 +315,11 @@ function encodeAnimatedGIF(rgbFrames, w, h, delayMs, loopCount, palette, nearest
         }
       }
     } else {
-      // 디더링 없음 — 단순 최근접 색상 매핑
       for(let i=0;i<w*h;i++){
         const pi=i*3
         indices[i]=nearest(rgb[pi],rgb[pi+1],rgb[pi+2])
       }
     }
-
     parts.push(Buffer.from([lzwMin]))
     parts.push(lzwEncode(indices,lzwMin))
     parts.push(Buffer.from([0x00]))
@@ -227,25 +360,6 @@ function lzwEncode(indices,minCodeSize){
   flushBlock()
   return Buffer.from(output)
 }
-
-ipcMain.handle('save-dialog',async(event,{tmpPath,format})=>{
-  const isGif=format==='gif'
-  const result=await dialog.showSaveDialog(mainWindow,{
-    title:'저장 위치 선택',
-    defaultPath:isGif?'animated.gif':'animated.webp',
-    filters:isGif?[{name:'Animated GIF',extensions:['gif']}]:[{name:'Animated WebP',extensions:['webp']}]
-  })
-  if(result.canceled)return{saved:false}
-  fs.copyFileSync(tmpPath,result.filePath)
-  try{fs.unlinkSync(tmpPath)}catch{}
-  return{saved:true,filePath:result.filePath}
-})
-
-ipcMain.handle('open-file',async(event,filePath)=>{shell.showItemInFolder(filePath)})
-ipcMain.handle('get-image-size',async(event,filePath)=>{
-  try{const sharp=require('sharp');const meta=await sharp(filePath).metadata();return{width:meta.width,height:meta.height}}
-  catch{return null}
-})
 
 function buildAnimatedWebP(frameBufs,delayMs,loopCount,canvasW,canvasH){
   function u32le(n){const b=Buffer.alloc(4);b.writeUInt32LE(n>>>0,0);return b}
