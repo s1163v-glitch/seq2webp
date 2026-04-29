@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 
 let mainWindow
+let cropWindow = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -87,13 +88,20 @@ async function buildGIF(event, sharp, filePaths, loopCount, quality, width, heig
 }
 
 // ──────────────────────────────────────────
-// 영상 파일 → 프레임 추출 (ffmpeg)
+// 영상 파일 → 프레임 추출 (ffmpeg + ffprobe)
 // ──────────────────────────────────────────
+function getFFmpegPaths() {
+  const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+  const ffprobePath = require('@ffprobe-installer/ffprobe').path
+  return { ffmpegPath, ffprobePath }
+}
+
 ipcMain.handle('get-video-info', async (event, filePath) => {
   try {
     const ffmpeg = require('fluent-ffmpeg')
-    const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+    const { ffmpegPath, ffprobePath } = getFFmpegPaths()
     ffmpeg.setFfmpegPath(ffmpegPath)
+    ffmpeg.setFfprobePath(ffprobePath)
     return await new Promise((resolve, reject) => {
       ffmpeg.ffprobe(filePath, (err, meta) => {
         if (err) return reject(err)
@@ -117,8 +125,9 @@ ipcMain.handle('get-video-info', async (event, filePath) => {
 ipcMain.handle('extract-video-frames', async (event, { filePath, fps, startSec, endSec }) => {
   try {
     const ffmpeg = require('fluent-ffmpeg')
-    const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+    const { ffmpegPath, ffprobePath } = getFFmpegPaths()
     ffmpeg.setFfmpegPath(ffmpegPath)
+    ffmpeg.setFfprobePath(ffprobePath)
 
     const tmpDir = path.join(os.tmpdir(), `seq2webp_vid_${Date.now()}`)
     fs.mkdirSync(tmpDir, { recursive: true })
@@ -164,23 +173,79 @@ ipcMain.handle('get-sources', async () => {
   }))
 })
 
-let recordingFrameDir = null
+// ──────────────────────────────────────────
+// 지정 프레임 오버레이 창
+// ──────────────────────────────────────────
+ipcMain.handle('open-crop-window', async () => {
+  if (cropWindow && !cropWindow.isDestroyed()) {
+    cropWindow.focus()
+    return
+  }
 
-ipcMain.handle('save-recorded-frames', async (event, { frames, fps, loopCount, quality, width, height, format, paletteSize, blurSigma, dither }) => {
-  // 프레임 데이터(base64 PNG)를 임시 파일로 저장 후 변환
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize
+
+  cropWindow = new BrowserWindow({
+    width, height,
+    x: 0, y: 0,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-overlay.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  cropWindow.loadFile(path.join(__dirname, 'renderer', 'overlay.html'))
+  cropWindow.setIgnoreMouseEvents(false)
+})
+
+ipcMain.handle('confirm-crop', async (event, cropRect) => {
+  // 오버레이에서 확정된 크롭 영역을 메인 창으로 전달
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('crop-result', cropRect)
+  }
+  if (cropWindow && !cropWindow.isDestroyed()) {
+    cropWindow.close()
+    cropWindow = null
+  }
+})
+
+ipcMain.handle('cancel-crop', async () => {
+  if (cropWindow && !cropWindow.isDestroyed()) {
+    cropWindow.close()
+    cropWindow = null
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('crop-result', null)
+  }
+})
+
+ipcMain.handle('save-recorded-frames', async (event, { frames, fps, loopCount, quality, width, height, format, paletteSize, blurSigma, dither, cropRect }) => {
   const tmpDir = path.join(os.tmpdir(), `seq2webp_rec_${Date.now()}`)
   fs.mkdirSync(tmpDir, { recursive: true })
+
+  let sharp
+  try { sharp = require('sharp') } catch (e) { return { success: false, error: 'sharp 로드 실패' } }
 
   const filePaths = []
   for (let i = 0; i < frames.length; i++) {
     const buf = Buffer.from(frames[i].replace(/^data:image\/\w+;base64,/, ''), 'base64')
     const fp = path.join(tmpDir, `frame_${String(i).padStart(6, '0')}.png`)
-    fs.writeFileSync(fp, buf)
+    // 크롭 영역이 있으면 sharp로 추출
+    if (cropRect && cropRect.w > 0 && cropRect.h > 0) {
+      await sharp(buf)
+        .extract({ left: cropRect.x, top: cropRect.y, width: cropRect.w, height: cropRect.h })
+        .toFile(fp)
+    } else {
+      fs.writeFileSync(fp, buf)
+    }
     filePaths.push(fp)
   }
-
-  let sharp
-  try { sharp = require('sharp') } catch (e) { return { success: false, error: 'sharp 로드 실패' } }
 
   const delayMs = Math.round(1000 / fps)
   try {
@@ -190,7 +255,6 @@ ipcMain.handle('save-recorded-frames', async (event, { frames, fps, loopCount, q
     } else {
       result = await buildWebP(event, sharp, filePaths, loopCount, quality, width, height, delayMs)
     }
-    // 임시 PNG들 정리
     try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch {}
     return result
   } catch (err) {
@@ -218,7 +282,7 @@ ipcMain.handle('get-image-size', async (event, filePath) => {
 })
 
 // ──────────────────────────────────────────
-// Median Cut & GIF 인코더 (기존 코드 유지)
+// Median Cut & GIF 인코더 (기존 유지)
 // ──────────────────────────────────────────
 function medianCutIterative(rgbBuf, numColors) {
   const total = rgbBuf.length / 3
@@ -283,7 +347,6 @@ function encodeAnimatedGIF(rgbFrames, w, h, delayMs, loopCount, palette, nearest
   parts.push(Buffer.from([0x21,0xFF,0x0B,0x4E,0x45,0x54,0x53,0x43,0x41,0x50,0x45,0x32,0x2E,0x30,0x03,0x01,loopCount&0xFF,(loopCount>>8)&0xFF,0x00]))
   const delay=Math.max(2,Math.round(delayMs/10))
   const lzwMin=Math.max(2,palExp+1)
-
   for(const rgb of rgbFrames){
     parts.push(Buffer.from([0x21,0xF9,0x04,0x00,delay&0xFF,(delay>>8)&0xFF,0x00,0x00]))
     const imgDesc=Buffer.alloc(10)
@@ -300,25 +363,22 @@ function encodeAnimatedGIF(rgbFrames, w, h, delayMs, loopCount, palette, nearest
       for(let y=0;y<h;y++){
         for(let x=0;x<w;x++){
           const pi=(y*w+x)*3
-          const r=Math.max(0,Math.min(255,rgb[pi]  +errR[y*(w+1)+x]))
+          const r=Math.max(0,Math.min(255,rgb[pi]+errR[y*(w+1)+x]))
           const g=Math.max(0,Math.min(255,rgb[pi+1]+errG[y*(w+1)+x]))
           const b=Math.max(0,Math.min(255,rgb[pi+2]+errB[y*(w+1)+x]))
           const idx=nearest(Math.round(r),Math.round(g),Math.round(b))
           indices[y*w+x]=idx
           const qr=r-palette[idx][0],qg=g-palette[idx][1],qb=b-palette[idx][2]
-          if(x+1<w)  {errR[y*(w+1)+x+1]+=qr*7/16;errG[y*(w+1)+x+1]+=qg*7/16;errB[y*(w+1)+x+1]+=qb*7/16}
+          if(x+1<w){errR[y*(w+1)+x+1]+=qr*7/16;errG[y*(w+1)+x+1]+=qg*7/16;errB[y*(w+1)+x+1]+=qb*7/16}
           if(y+1<h){
-            if(x>0)  {errR[(y+1)*(w+1)+x-1]+=qr*3/16;errG[(y+1)*(w+1)+x-1]+=qg*3/16;errB[(y+1)*(w+1)+x-1]+=qb*3/16}
-                      errR[(y+1)*(w+1)+x]  +=qr*5/16;errG[(y+1)*(w+1)+x]  +=qg*5/16;errB[(y+1)*(w+1)+x]  +=qb*5/16
+            if(x>0){errR[(y+1)*(w+1)+x-1]+=qr*3/16;errG[(y+1)*(w+1)+x-1]+=qg*3/16;errB[(y+1)*(w+1)+x-1]+=qb*3/16}
+            errR[(y+1)*(w+1)+x]+=qr*5/16;errG[(y+1)*(w+1)+x]+=qg*5/16;errB[(y+1)*(w+1)+x]+=qb*5/16
             if(x+1<w){errR[(y+1)*(w+1)+x+1]+=qr*1/16;errG[(y+1)*(w+1)+x+1]+=qg*1/16;errB[(y+1)*(w+1)+x+1]+=qb*1/16}
           }
         }
       }
     } else {
-      for(let i=0;i<w*h;i++){
-        const pi=i*3
-        indices[i]=nearest(rgb[pi],rgb[pi+1],rgb[pi+2])
-      }
+      for(let i=0;i<w*h;i++){const pi=i*3;indices[i]=nearest(rgb[pi],rgb[pi+1],rgb[pi+2])}
     }
     parts.push(Buffer.from([lzwMin]))
     parts.push(lzwEncode(indices,lzwMin))
@@ -335,9 +395,7 @@ function lzwEncode(indices,minCodeSize){
   const initTable=()=>{table.clear();codeSize=minCodeSize+1;nextCode=eofCode+1}
   let bitBuf=0,bitLen=0
   const output=[],block=[]
-  const flushBlock=()=>{
-    if(block.length>0){output.push(block.length);for(const b of block)output.push(b);block.length=0}
-  }
+  const flushBlock=()=>{if(block.length>0){output.push(block.length);for(const b of block)output.push(b);block.length=0}}
   const writeBit=(code)=>{
     bitBuf|=(code<<bitLen);bitLen+=codeSize
     while(bitLen>=8){block.push(bitBuf&0xFF);bitBuf=(bitBuf>>8)>>>0;bitLen-=8;if(block.length===255)flushBlock()}
@@ -365,20 +423,13 @@ function buildAnimatedWebP(frameBufs,delayMs,loopCount,canvasW,canvasH){
   function u32le(n){const b=Buffer.alloc(4);b.writeUInt32LE(n>>>0,0);return b}
   function u24le(n){return Buffer.from([n&0xff,(n>>8)&0xff,(n>>16)&0xff])}
   function u16le(n){return Buffer.from([n&0xff,(n>>8)&0xff])}
-  function chunk(id,data){
-    const pad=data.length%2!==0?Buffer.from([0]):Buffer.alloc(0)
-    return Buffer.concat([Buffer.from(id,'ascii'),u32le(data.length),data,pad])
-  }
+  function chunk(id,data){const pad=data.length%2!==0?Buffer.from([0]):Buffer.alloc(0);return Buffer.concat([Buffer.from(id,'ascii'),u32le(data.length),data,pad])}
   let W=canvasW,H=canvasH
   if(!W||!H){
     const src=frameBufs[0];let off=12
     while(off<src.length-8){
       const cid=src.slice(off,off+4).toString('ascii'),csz=src.readUInt32LE(off+4)
-      if(cid==='VP8 '){
-        const bs=src.slice(off+8)
-        if(bs[3]===0x9d&&bs[4]===0x01&&bs[5]===0x2a){W=bs.readUInt16LE(6)&0x3fff;H=bs.readUInt16LE(8)&0x3fff}
-        break
-      }
+      if(cid==='VP8 '){const bs=src.slice(off+8);if(bs[3]===0x9d&&bs[4]===0x01&&bs[5]===0x2a){W=bs.readUInt16LE(6)&0x3fff;H=bs.readUInt16LE(8)&0x3fff};break}
       off+=8+csz+(csz%2)
     }
     if(!W)W=800;if(!H)H=600
@@ -388,14 +439,8 @@ function buildAnimatedWebP(frameBufs,delayMs,loopCount,canvasW,canvasH){
   const anmfChunks=frameBufs.map(src=>{
     let bc=null
     const fid=src.slice(12,16).toString('ascii'),fsz=src.readUInt32LE(16)
-    if(fid==='VP8X'){
-      let pos=20+fsz+(fsz%2)
-      while(pos<src.length-8){
-        const cid=src.slice(pos,pos+4).toString('ascii'),csz=src.readUInt32LE(pos+4)
-        if(cid==='VP8 '||cid==='VP8L'){bc=chunk(cid,src.slice(pos+8,pos+8+csz));break}
-        pos+=8+csz+(csz%2)
-      }
-    }else{bc=chunk(fid,src.slice(20,20+fsz))}
+    if(fid==='VP8X'){let pos=20+fsz+(fsz%2);while(pos<src.length-8){const cid=src.slice(pos,pos+4).toString('ascii'),csz=src.readUInt32LE(pos+4);if(cid==='VP8 '||cid==='VP8L'){bc=chunk(cid,src.slice(pos+8,pos+8+csz));break};pos+=8+csz+(csz%2)}}
+    else{bc=chunk(fid,src.slice(20,20+fsz))}
     if(!bc)return null
     return chunk('ANMF',Buffer.concat([u24le(0),u24le(0),u24le(W-1),u24le(H-1),u24le(Math.round(delayMs)),Buffer.from([0x00]),bc]))
   }).filter(Boolean)

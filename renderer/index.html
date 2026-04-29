@@ -13,7 +13,6 @@
     --accent: #1a1a18; --accent-light: #f0efe9;
     --danger: #c0392b; --danger-light: #fdf0ee;
     --radius: 10px; --radius-sm: 6px;
-    --tab-active: #1a1a18;
   }
   body {
     font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
@@ -27,37 +26,28 @@
     -webkit-app-region: drag; flex-shrink: 0; gap: 8px;
   }
   .titlebar-icon { width: 18px; height: 18px; opacity: 0.7; }
-  .titlebar-title { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; color: var(--text); }
+  .titlebar-title { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
   .titlebar-sub { font-size: 11px; color: var(--text3); margin-left: 4px; }
-
-  /* 탭 네비게이션 */
   .tab-nav {
     display: flex; background: var(--surface); border-bottom: 1px solid var(--border);
-    padding: 0 16px; gap: 0; flex-shrink: 0; -webkit-app-region: no-drag;
+    padding: 0 16px; flex-shrink: 0; -webkit-app-region: no-drag;
   }
   .tab-btn {
     padding: 10px 18px; font-size: 12px; font-weight: 500; color: var(--text3);
     background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent;
     transition: color 0.15s, border-color 0.15s; margin-bottom: -1px;
   }
-  .tab-btn.active { color: var(--tab-active); border-bottom-color: var(--tab-active); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab-btn:hover:not(.active) { color: var(--text2); }
-
-  /* 탭 패널 */
   .tab-panel { display: none; flex: 1; overflow: hidden; }
   .tab-panel.active { display: flex; }
-
-  /* ── 공통 레이아웃 ── */
   .main { display: flex; flex: 1; overflow: hidden; }
   .panel-left {
     width: 300px; flex-shrink: 0; background: var(--surface);
     border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
   }
   .panel-section { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
-  .section-title {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
-    text-transform: uppercase; color: var(--text3); margin-bottom: 10px;
-  }
+  .section-title { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
   #drop-zone {
     border: 1.5px dashed var(--border2); border-radius: var(--radius);
     padding: 20px 12px; text-align: center; cursor: pointer;
@@ -73,35 +63,22 @@
   .file-num { font-size: 10px; color: var(--text3); min-width: 18px; text-align: right; flex-shrink: 0; }
   .file-thumb { width: 28px; height: 28px; border-radius: 4px; background: var(--surface2); object-fit: cover; flex-shrink: 0; border: 1px solid var(--border); }
   .file-ext-badge { width: 28px; height: 28px; border-radius: 4px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; color: var(--text2); flex-shrink: 0; }
-  .file-name { flex: 1; font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .file-list-footer {
-    padding: 8px 14px; display: flex; justify-content: space-between; align-items: center;
-    border-top: 1px solid var(--border); background: var(--surface);
-  }
+  .file-name { flex: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-list-footer { padding: 8px 14px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); background: var(--surface); }
   .file-count { font-size: 11px; color: var(--text2); }
   #clear-btn { font-size: 11px; color: var(--danger); background: none; border: none; cursor: pointer; padding: 3px 6px; border-radius: 4px; }
   #clear-btn:hover { background: var(--danger-light); }
   .panel-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
-  .settings-bar {
-    padding: 12px 18px; background: var(--surface); border-bottom: 1px solid var(--border);
-    display: flex; gap: 14px; align-items: flex-end; flex-shrink: 0; flex-wrap: wrap;
-  }
+  .settings-bar { padding: 12px 18px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 14px; align-items: flex-end; flex-shrink: 0; flex-wrap: wrap; }
   .ctrl { display: flex; flex-direction: column; gap: 5px; }
   .ctrl label { font-size: 11px; color: var(--text2); }
-  .ctrl input[type=number], .ctrl select {
-    width: 86px; padding: 5px 8px; font-size: 13px;
-    border: 1px solid var(--border2); border-radius: var(--radius-sm);
-    background: var(--bg); color: var(--text); outline: none;
-  }
+  .ctrl input[type=number], .ctrl select { width: 86px; padding: 5px 8px; font-size: 13px; border: 1px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); outline: none; }
   .ctrl input[type=number]:focus, .ctrl select:focus { border-color: var(--accent); }
   .ctrl-quality { flex: 1; min-width: 90px; }
   .ctrl-quality label { display: flex; justify-content: space-between; }
   .ctrl-quality input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
   .format-toggle { display: flex; border: 1px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; }
-  .fmt-btn {
-    flex: 1; padding: 5px 16px; font-size: 13px; font-weight: 500;
-    border: none; background: var(--bg); color: var(--text2); cursor: pointer; transition: background 0.12s, color 0.12s;
-  }
+  .fmt-btn { flex: 1; padding: 5px 16px; font-size: 13px; font-weight: 500; border: none; background: var(--bg); color: var(--text2); cursor: pointer; transition: background 0.12s, color 0.12s; }
   .fmt-btn.active { background: var(--accent); color: #fff; }
   .fmt-btn:not(.active):hover { background: var(--surface2); }
   .gif-only { display: none; }
@@ -110,43 +87,21 @@
   .toggle-wrap label { font-size: 11px; color: var(--text2); cursor: pointer; }
   .toggle { position: relative; width: 32px; height: 18px; flex-shrink: 0; }
   .toggle input { opacity: 0; width: 0; height: 0; }
-  .toggle-slider {
-    position: absolute; inset: 0; background: var(--border2);
-    border-radius: 9px; cursor: pointer; transition: background 0.15s;
-  }
-  .toggle-slider:before {
-    content: ''; position: absolute; width: 12px; height: 12px;
-    left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform 0.15s;
-  }
+  .toggle-slider { position: absolute; inset: 0; background: var(--border2); border-radius: 9px; cursor: pointer; transition: background 0.15s; }
+  .toggle-slider:before { content: ''; position: absolute; width: 12px; height: 12px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform 0.15s; }
   .toggle input:checked + .toggle-slider { background: var(--accent); }
   .toggle input:checked + .toggle-slider:before { transform: translateX(14px); }
-  .preview-wrap {
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    padding: 20px; overflow: hidden; position: relative;
-  }
+  .preview-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; overflow: hidden; }
   .preview-empty { text-align: center; color: var(--text3); pointer-events: none; }
   .preview-empty .empty-icon { font-size: 40px; margin-bottom: 10px; }
   .preview-empty p { font-size: 12px; }
-  #preview-img, #preview-img-vid, #preview-img-rec {
-    max-width: 100%; max-height: 100%; border-radius: var(--radius); border: 1px solid var(--border);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06); display: none; object-fit: contain;
-  }
-  .bottom-bar {
-    padding: 12px 18px; background: var(--surface); border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
-  }
-  .action-btn {
-    padding: 7px 22px; font-size: 13px; font-weight: 600;
-    border-radius: var(--radius-sm); border: 1px solid var(--accent);
-    background: var(--accent); color: #fff; cursor: pointer;
-    transition: opacity 0.1s, transform 0.1s; white-space: nowrap; flex-shrink: 0;
-  }
+  #preview-img, #preview-img-vid, #preview-img-rec { max-width: 100%; max-height: 100%; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 2px 12px rgba(0,0,0,0.06); display: none; object-fit: contain; }
+  .bottom-bar { padding: 12px 18px; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .action-btn { padding: 7px 22px; font-size: 13px; font-weight: 600; border-radius: var(--radius-sm); border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; transition: opacity 0.1s, transform 0.1s; white-space: nowrap; flex-shrink: 0; }
   .action-btn:hover:not(:disabled) { opacity: 0.85; }
   .action-btn:active:not(:disabled) { transform: scale(0.98); }
   .action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-  .action-btn.secondary {
-    background: var(--surface); color: var(--text); border-color: var(--border2);
-  }
+  .action-btn.secondary { background: var(--surface); color: var(--text); border-color: var(--border2); }
   .action-btn.secondary:hover:not(:disabled) { background: var(--surface2); opacity: 1; }
   .action-btn.danger { background: var(--danger); border-color: var(--danger); }
   .progress-wrap { flex: 1; display: none; flex-direction: column; gap: 4px; }
@@ -154,57 +109,35 @@
   .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.2s; }
   .progress-label-txt { font-size: 11px; color: var(--text2); }
   .output-info { font-size: 11px; color: var(--text2); display: none; }
-  .error-bar {
-    padding: 8px 18px; background: var(--danger-light); color: var(--danger);
-    font-size: 12px; border-top: 1px solid rgba(192,57,43,0.2); display: none; flex-shrink: 0;
-  }
-
-  /* ── 영상 탭 전용 ── */
-  .video-drop-zone {
-    border: 1.5px dashed var(--border2); border-radius: var(--radius);
-    padding: 28px 16px; text-align: center; cursor: pointer;
-    background: var(--bg); transition: all 0.15s; position: relative; margin: 14px;
-  }
+  .error-bar { padding: 8px 18px; background: var(--danger-light); color: var(--danger); font-size: 12px; border-top: 1px solid rgba(192,57,43,0.2); display: none; flex-shrink: 0; }
+  /* 영상 탭 */
+  .video-drop-zone { border: 1.5px dashed var(--border2); border-radius: var(--radius); padding: 28px 16px; text-align: center; cursor: pointer; background: var(--bg); transition: all 0.15s; position: relative; margin: 14px; }
   .video-drop-zone.drag { border-color: var(--accent); background: var(--accent-light); }
   .video-drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-  .video-info-box {
-    margin: 0 14px 10px; padding: 10px 12px; background: var(--surface2);
-    border-radius: var(--radius-sm); font-size: 11px; color: var(--text2); display: none;
-  }
+  .video-info-box { margin: 0 14px 10px; padding: 10px 12px; background: var(--surface2); border-radius: var(--radius-sm); font-size: 11px; color: var(--text2); display: none; }
   .video-info-box span { margin-right: 14px; }
   .range-row { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; font-size: 11px; color: var(--text2); }
-  .range-row input[type=number] {
-    width: 70px; padding: 4px 7px; font-size: 12px;
-    border: 1px solid var(--border2); border-radius: var(--radius-sm);
-    background: var(--bg); color: var(--text);
-  }
-
-  /* ── 화면 녹화 탭 전용 ── */
+  .range-row input[type=number] { width: 70px; padding: 4px 7px; font-size: 12px; border: 1px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); }
+  /* 녹화 탭 */
   .rec-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .rec-sources {
-    display: flex; flex-wrap: wrap; gap: 8px; padding: 14px;
-    overflow-y: auto; max-height: 220px;
-  }
-  .source-card {
-    width: 140px; border: 1.5px solid var(--border2); border-radius: var(--radius-sm);
-    cursor: pointer; overflow: hidden; transition: border-color 0.12s, box-shadow 0.12s;
-    background: var(--surface);
-  }
+  .rec-sources { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px; overflow-y: auto; max-height: 220px; }
+  .source-card { width: 140px; border: 1.5px solid var(--border2); border-radius: var(--radius-sm); cursor: pointer; overflow: hidden; transition: border-color 0.12s, box-shadow 0.12s; background: var(--surface); }
   .source-card:hover { border-color: var(--accent); }
   .source-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
   .source-thumb { width: 100%; height: 79px; object-fit: cover; display: block; background: #000; }
+  /* 지정 프레임 카드 */
+  .crop-thumb { display: flex; align-items: center; justify-content: center; color: var(--text3); background: var(--surface2); }
+  .crop-card:hover .crop-thumb { color: var(--accent); }
+  .crop-card.selected .crop-thumb { color: var(--accent); }
   .source-name { font-size: 10px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text2); }
-  .rec-settings {
-    padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface);
-    display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;
-  }
-  .rec-timer {
-    font-size: 32px; font-weight: 700; text-align: center; padding: 20px;
-    color: var(--danger); display: none; letter-spacing: 0.04em;
-  }
-  .rec-preview-wrap {
-    flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px;
-  }
+  /* 크롭 상태 표시 */
+  .crop-status { display: flex; align-items: center; gap: 6px; padding: 0 14px 8px; font-size: 11px; }
+  #crop-indicator { color: var(--accent); font-weight: 500; display: none; }
+  #crop-clear-btn { font-size: 11px; color: var(--danger); background: none; border: none; cursor: pointer; display: none; padding: 2px 6px; border-radius: 4px; }
+  #crop-clear-btn:hover { background: var(--danger-light); }
+  .rec-settings { padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+  .rec-timer { font-size: 32px; font-weight: 700; text-align: center; padding: 16px; color: var(--danger); display: none; letter-spacing: 0.04em; }
+  .rec-preview-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 16px; }
 </style>
 </head>
 <body>
@@ -220,16 +153,13 @@
   <span class="titlebar-sub">이미지 시퀀스 · 영상 변환 · 화면 녹화 → WebP / GIF</span>
 </div>
 
-<!-- 탭 네비게이션 -->
 <div class="tab-nav">
   <button class="tab-btn active" data-tab="seq">🖼️ 이미지 시퀀스</button>
   <button class="tab-btn" data-tab="video">🎬 영상 변환</button>
   <button class="tab-btn" data-tab="record">⏺ 화면 녹화</button>
 </div>
 
-<!-- ════════════════════════════════════════
-     탭 1: 이미지 시퀀스 (기존)
-════════════════════════════════════════ -->
+<!-- 탭 1: 이미지 시퀀스 -->
 <div class="tab-panel active" id="tab-seq">
   <div class="main">
     <div class="panel-left">
@@ -250,70 +180,29 @@
     </div>
     <div class="panel-right">
       <div class="settings-bar">
-        <div class="ctrl">
-          <label>출력 포맷</label>
-          <div class="format-toggle">
-            <button class="fmt-btn active" data-fmt="webp">WebP</button>
-            <button class="fmt-btn" data-fmt="gif">GIF</button>
-          </div>
-        </div>
+        <div class="ctrl"><label>출력 포맷</label><div class="format-toggle"><button class="fmt-btn active" data-fmt="webp">WebP</button><button class="fmt-btn" data-fmt="gif">GIF</button></div></div>
         <div class="ctrl"><label>FPS</label><input type="number" id="fps-input" min="1" max="60" value="12"></div>
-        <div class="ctrl">
-          <label>루프</label>
-          <select id="loop-select">
-            <option value="0">무한 반복</option>
-            <option value="1">1회</option>
-            <option value="2">2회</option>
-            <option value="3">3회</option>
-          </select>
-        </div>
+        <div class="ctrl"><label>루프</label><select id="loop-select"><option value="0">무한 반복</option><option value="1">1회</option><option value="2">2회</option><option value="3">3회</option></select></div>
         <div class="ctrl"><label>너비 (px)</label><input type="number" id="width-input" min="1" max="8192" placeholder="원본"></div>
         <div class="ctrl"><label>높이 (px)</label><input type="number" id="height-input" min="1" max="8192" placeholder="원본"></div>
-        <div class="ctrl gif-only" id="palette-ctrl">
-          <label>팔레트 (GIF)</label>
-          <select id="palette-select">
-            <option value="16">16색</option><option value="32">32색</option>
-            <option value="64">64색</option><option value="128">128색</option>
-            <option value="256" selected>256색</option>
-          </select>
-        </div>
-        <div class="ctrl gif-only" id="blur-ctrl">
-          <label>블러 <span id="blur-val">0</span></label>
-          <input type="range" id="blur-input" min="0" max="3" value="0" step="0.5" style="width:86px;accent-color:var(--accent);cursor:pointer">
-        </div>
-        <div class="toggle-wrap gif-only" id="dither-ctrl">
-          <label class="toggle"><input type="checkbox" id="dither-check" checked><span class="toggle-slider"></span></label>
-          <label for="dither-check">디더링</label>
-        </div>
-        <div class="ctrl ctrl-quality">
-          <label>화질 <span id="quality-val">85</span>%</label>
-          <input type="range" id="quality-input" min="10" max="100" value="85" step="5">
-        </div>
+        <div class="ctrl gif-only" id="palette-ctrl"><label>팔레트 (GIF)</label><select id="palette-select"><option value="16">16색</option><option value="32">32색</option><option value="64">64색</option><option value="128">128색</option><option value="256" selected>256색</option></select></div>
+        <div class="ctrl gif-only" id="blur-ctrl"><label>블러 <span id="blur-val">0</span></label><input type="range" id="blur-input" min="0" max="3" value="0" step="0.5" style="width:86px;accent-color:var(--accent);cursor:pointer"></div>
+        <div class="toggle-wrap gif-only" id="dither-ctrl"><label class="toggle"><input type="checkbox" id="dither-check" checked><span class="toggle-slider"></span></label><label for="dither-check">디더링</label></div>
+        <div class="ctrl ctrl-quality"><label>화질 <span id="quality-val">85</span>%</label><input type="range" id="quality-input" min="10" max="100" value="85" step="5"></div>
       </div>
-      <div class="preview-wrap">
-        <div class="preview-empty" id="preview-empty">
-          <div class="empty-icon">✦</div>
-          <p>변환하면 여기서 미리볼 수 있어요</p>
-        </div>
-        <img id="preview-img" alt="미리보기">
-      </div>
+      <div class="preview-wrap"><div class="preview-empty" id="preview-empty"><div class="empty-icon">✦</div><p>변환하면 여기서 미리볼 수 있어요</p></div><img id="preview-img" alt="미리보기"></div>
       <div class="error-bar" id="error-bar"></div>
       <div class="bottom-bar">
         <button id="convert-btn" class="action-btn" disabled>변환 시작</button>
         <button id="save-btn" class="action-btn secondary" style="display:none">저장...</button>
-        <div class="progress-wrap" id="progress-wrap">
-          <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-          <div class="progress-label-txt" id="progress-label">준비 중...</div>
-        </div>
+        <div class="progress-wrap" id="progress-wrap"><div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div><div class="progress-label-txt" id="progress-label">준비 중...</div></div>
         <div class="output-info" id="output-info"></div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ════════════════════════════════════════
-     탭 2: 영상 변환
-════════════════════════════════════════ -->
+<!-- 탭 2: 영상 변환 -->
 <div class="tab-panel" id="tab-video">
   <div class="main">
     <div class="panel-left">
@@ -324,124 +213,58 @@
         <div class="dz-title">영상 파일 선택</div>
         <div class="dz-sub" style="margin-top:6px">MP4 · MOV · AVI · MKV · WebM</div>
       </div>
-      <div class="video-info-box" id="video-info-box">
-        <span id="vid-res">-</span>
-        <span id="vid-fps">-</span>
-        <span id="vid-dur">-</span>
-      </div>
-      <div class="range-row">
-        <label>구간 시작</label>
-        <input type="number" id="vid-start" min="0" value="0" step="0.1"> 초
-      </div>
-      <div class="range-row">
-        <label>구간 끝</label>
-        <input type="number" id="vid-end" min="0" value="0" step="0.1"> 초 <span style="color:var(--text3);font-size:10px">(0=전체)</span>
-      </div>
+      <div class="video-info-box" id="video-info-box"><span id="vid-res">-</span><span id="vid-fps">-</span><span id="vid-dur">-</span></div>
+      <div class="range-row"><label>구간 시작</label><input type="number" id="vid-start" min="0" value="0" step="0.1"> 초</div>
+      <div class="range-row"><label>구간 끝</label><input type="number" id="vid-end" min="0" value="0" step="0.1"> 초 <span style="color:var(--text3);font-size:10px">(0=전체)</span></div>
     </div>
     <div class="panel-right">
       <div class="settings-bar">
-        <div class="ctrl">
-          <label>출력 포맷</label>
-          <div class="format-toggle">
-            <button class="fmt-btn active" data-fmt="webp" data-group="vid">WebP</button>
-            <button class="fmt-btn" data-fmt="gif" data-group="vid">GIF</button>
-          </div>
-        </div>
+        <div class="ctrl"><label>출력 포맷</label><div class="format-toggle"><button class="fmt-btn active" data-fmt="webp" data-group="vid">WebP</button><button class="fmt-btn" data-fmt="gif" data-group="vid">GIF</button></div></div>
         <div class="ctrl"><label>추출 FPS</label><input type="number" id="vid-fps-input" min="1" max="60" value="12"></div>
-        <div class="ctrl">
-          <label>루프</label>
-          <select id="vid-loop-select">
-            <option value="0">무한 반복</option>
-            <option value="1">1회</option>
-            <option value="2">2회</option>
-            <option value="3">3회</option>
-          </select>
-        </div>
+        <div class="ctrl"><label>루프</label><select id="vid-loop-select"><option value="0">무한 반복</option><option value="1">1회</option><option value="2">2회</option><option value="3">3회</option></select></div>
         <div class="ctrl"><label>너비 (px)</label><input type="number" id="vid-width-input" min="1" max="8192" placeholder="원본"></div>
         <div class="ctrl"><label>높이 (px)</label><input type="number" id="vid-height-input" min="1" max="8192" placeholder="원본"></div>
-        <div class="ctrl gif-only" id="vid-palette-ctrl">
-          <label>팔레트 (GIF)</label>
-          <select id="vid-palette-select">
-            <option value="64">64색</option><option value="128">128색</option>
-            <option value="256" selected>256색</option>
-          </select>
-        </div>
-        <div class="ctrl ctrl-quality">
-          <label>화질 <span id="vid-quality-val">85</span>%</label>
-          <input type="range" id="vid-quality-input" min="10" max="100" value="85" step="5">
-        </div>
+        <div class="ctrl gif-only" id="vid-palette-ctrl"><label>팔레트 (GIF)</label><select id="vid-palette-select"><option value="64">64색</option><option value="128">128색</option><option value="256" selected>256색</option></select></div>
+        <div class="ctrl ctrl-quality"><label>화질 <span id="vid-quality-val">85</span>%</label><input type="range" id="vid-quality-input" min="10" max="100" value="85" step="5"></div>
       </div>
-      <div class="preview-wrap">
-        <div class="preview-empty" id="vid-preview-empty">
-          <div class="empty-icon">🎬</div>
-          <p>영상을 선택하고 변환하면 여기서 미리볼 수 있어요</p>
-        </div>
-        <img id="preview-img-vid" alt="미리보기">
-      </div>
+      <div class="preview-wrap"><div class="preview-empty" id="vid-preview-empty"><div class="empty-icon">🎬</div><p>영상을 선택하고 변환하면 여기서 미리볼 수 있어요</p></div><img id="preview-img-vid" alt="미리보기"></div>
       <div class="error-bar" id="vid-error-bar"></div>
       <div class="bottom-bar">
         <button id="vid-convert-btn" class="action-btn" disabled>변환 시작</button>
         <button id="vid-save-btn" class="action-btn secondary" style="display:none">저장...</button>
-        <div class="progress-wrap" id="vid-progress-wrap">
-          <div class="progress-track"><div class="progress-fill" id="vid-progress-fill" style="width:0%"></div></div>
-          <div class="progress-label-txt" id="vid-progress-label">준비 중...</div>
-        </div>
+        <div class="progress-wrap" id="vid-progress-wrap"><div class="progress-track"><div class="progress-fill" id="vid-progress-fill" style="width:0%"></div></div><div class="progress-label-txt" id="vid-progress-label">준비 중...</div></div>
         <div class="output-info" id="vid-output-info"></div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ════════════════════════════════════════
-     탭 3: 화면 녹화
-════════════════════════════════════════ -->
+<!-- 탭 3: 화면 녹화 -->
 <div class="tab-panel" id="tab-record">
   <div class="rec-panel">
     <div class="section-title" style="padding:14px 14px 6px">녹화 대상 선택</div>
-    <div class="rec-sources" id="rec-sources">
-      <div style="color:var(--text3);font-size:12px;padding:8px">로딩 중...</div>
+    <div class="rec-sources" id="rec-sources"><div style="color:var(--text3);font-size:12px;padding:8px">로딩 중...</div></div>
+    <div class="crop-status">
+      <span id="crop-indicator"></span>
+      <button id="crop-clear-btn">✕ 영역 초기화</button>
     </div>
     <div class="rec-settings">
-      <div class="ctrl">
-        <label>출력 포맷</label>
-        <div class="format-toggle">
-          <button class="fmt-btn active" data-fmt="webp" data-group="rec">WebP</button>
-          <button class="fmt-btn" data-fmt="gif" data-group="rec">GIF</button>
-        </div>
-      </div>
+      <div class="ctrl"><label>출력 포맷</label><div class="format-toggle"><button class="fmt-btn active" data-fmt="webp" data-group="rec">WebP</button><button class="fmt-btn" data-fmt="gif" data-group="rec">GIF</button></div></div>
       <div class="ctrl"><label>캡처 FPS</label><input type="number" id="rec-fps-input" min="1" max="30" value="10"></div>
-      <div class="ctrl">
-        <label>루프</label>
-        <select id="rec-loop-select">
-          <option value="0">무한 반복</option>
-          <option value="1">1회</option>
-        </select>
-      </div>
+      <div class="ctrl"><label>루프</label><select id="rec-loop-select"><option value="0">무한 반복</option><option value="1">1회</option></select></div>
       <div class="ctrl"><label>너비 (px)</label><input type="number" id="rec-width-input" min="1" max="3840" placeholder="원본"></div>
       <div class="ctrl"><label>높이 (px)</label><input type="number" id="rec-height-input" min="1" max="2160" placeholder="원본"></div>
-      <div class="ctrl ctrl-quality">
-        <label>화질 <span id="rec-quality-val">85</span>%</label>
-        <input type="range" id="rec-quality-input" min="10" max="100" value="85" step="5">
-      </div>
+      <div class="ctrl ctrl-quality"><label>화질 <span id="rec-quality-val">85</span>%</label><input type="range" id="rec-quality-input" min="10" max="100" value="85" step="5"></div>
     </div>
     <div class="rec-timer" id="rec-timer">00:00</div>
-    <div class="rec-preview-wrap">
-      <div class="preview-empty" id="rec-preview-empty">
-        <div class="empty-icon">⏺</div>
-        <p>녹화 대상을 선택하고 녹화를 시작하세요</p>
-      </div>
-      <img id="preview-img-rec" alt="미리보기">
-    </div>
+    <div class="rec-preview-wrap"><div class="preview-empty" id="rec-preview-empty"><div class="empty-icon">⏺</div><p>녹화 대상을 선택하고 녹화를 시작하세요</p></div><img id="preview-img-rec" alt="미리보기"></div>
     <div class="error-bar" id="rec-error-bar"></div>
     <div class="bottom-bar">
       <button id="rec-start-btn" class="action-btn" disabled>녹화 시작</button>
       <button id="rec-stop-btn" class="action-btn danger" style="display:none">녹화 중지</button>
       <button id="rec-convert-btn" class="action-btn" style="display:none" disabled>변환 시작</button>
       <button id="rec-save-btn" class="action-btn secondary" style="display:none">저장...</button>
-      <div class="progress-wrap" id="rec-progress-wrap">
-        <div class="progress-track"><div class="progress-fill" id="rec-progress-fill" style="width:0%"></div></div>
-        <div class="progress-label-txt" id="rec-progress-label">준비 중...</div>
-      </div>
+      <div class="progress-wrap" id="rec-progress-wrap"><div class="progress-track"><div class="progress-fill" id="rec-progress-fill" style="width:0%"></div></div><div class="progress-label-txt" id="rec-progress-label">준비 중...</div></div>
       <div class="output-info" id="rec-output-info"></div>
     </div>
   </div>

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100vw; height: 100vh;
+    background: transparent;
+    overflow: hidden;
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  /* 선택된 영역은 투명하게 뚫림 */
+  #selection {
+    position: fixed;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+    display: none;
+    cursor: move;
+  }
+  /* 모서리 핸들 */
+  .handle {
+    position: absolute;
+    width: 10px; height: 10px;
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.4);
+    border-radius: 2px;
+  }
+  .handle.tl { top: -5px; left: -5px; cursor: nw-resize; }
+  .handle.tr { top: -5px; right: -5px; cursor: ne-resize; }
+  .handle.bl { bottom: -5px; left: -5px; cursor: sw-resize; }
+  .handle.br { bottom: -5px; right: -5px; cursor: se-resize; }
+  .handle.tm { top: -5px; left: calc(50% - 5px); cursor: n-resize; }
+  .handle.bm { bottom: -5px; left: calc(50% - 5px); cursor: s-resize; }
+  .handle.lm { top: calc(50% - 5px); left: -5px; cursor: w-resize; }
+  .handle.rm { top: calc(50% - 5px); right: -5px; cursor: e-resize; }
+  /* 치수 표시 */
+  #size-label {
+    position: fixed;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    font: 12px 'Segoe UI', sans-serif;
+    padding: 3px 8px;
+    border-radius: 4px;
+    pointer-events: none;
+    display: none;
+    white-space: nowrap;
+  }
+  /* 툴바 */
+  #toolbar {
+    position: fixed;
+    display: none;
+    gap: 6px;
+    background: rgba(20,20,20,0.92);
+    border-radius: 8px;
+    padding: 6px 10px;
+    align-items: center;
+  }
+  #toolbar button {
+    padding: 5px 14px;
+    border: none;
+    border-radius: 5px;
+    font: 600 12px 'Segoe UI', sans-serif;
+    cursor: pointer;
+  }
+  #btn-confirm { background: #fff; color: #111; }
+  #btn-confirm:hover { background: #e8e8e8; }
+  #btn-cancel { background: rgba(255,255,255,0.12); color: #fff; }
+  #btn-cancel:hover { background: rgba(255,255,255,0.22); }
+  #toolbar span { color: rgba(255,255,255,0.5); font: 11px 'Segoe UI', sans-serif; }
+  /* 안내 텍스트 */
+  #hint {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255,255,255,0.85);
+    font: 16px 'Segoe UI', 'Malgun Gothic', sans-serif;
+    text-align: center;
+    pointer-events: none;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  }
+  #hint p { margin-top: 8px; font-size: 12px; opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<div id="overlay"></div>
+<div id="hint">
+  녹화할 영역을 드래그해서 선택하세요
+  <p>ESC — 취소</p>
+</div>
+<div id="selection">
+  <div class="handle tl" data-dir="tl"></div>
+  <div class="handle tm" data-dir="tm"></div>
+  <div class="handle tr" data-dir="tr"></div>
+  <div class="handle lm" data-dir="lm"></div>
+  <div class="handle rm" data-dir="rm"></div>
+  <div class="handle bl" data-dir="bl"></div>
+  <div class="handle bm" data-dir="bm"></div>
+  <div class="handle br" data-dir="br"></div>
+</div>
+<div id="size-label"></div>
+<div id="toolbar">
+  <button id="btn-confirm">✓ 선택 완료</button>
+  <span id="toolbar-size"></span>
+  <button id="btn-cancel">✕ 취소</button>
+</div>
+
+<script>
+const sel = document.getElementById('selection')
+const sizeLabel = document.getElementById('size-label')
+const toolbar = document.getElementById('toolbar')
+const toolbarSize = document.getElementById('toolbar-size')
+const hint = document.getElementById('hint')
+
+let isDragging = false
+let isResizing = false
+let isMoving = false
+let dragDir = null
+let startX = 0, startY = 0
+let rect = { x: 0, y: 0, w: 0, h: 0 }
+let moveStartRect = null
+let hasSel = false
+
+function applyRect() {
+  sel.style.left = rect.x + 'px'
+  sel.style.top = rect.y + 'px'
+  sel.style.width = rect.w + 'px'
+  sel.style.height = rect.h + 'px'
+  sel.style.display = 'block'
+  sizeLabel.textContent = `${rect.w} × ${rect.h}`
+  sizeLabel.style.left = (rect.x + rect.w / 2 - 40) + 'px'
+  sizeLabel.style.top = (rect.y - 26) + 'px'
+  sizeLabel.style.display = (rect.w > 10 && rect.h > 10) ? 'block' : 'none'
+  toolbarSize.textContent = `${rect.w} × ${rect.h}`
+  // 툴바 위치: 선택 박스 아래, 화면 밖으로 나가지 않게
+  const tbX = Math.min(rect.x, window.innerWidth - 230)
+  const tbY = Math.min(rect.y + rect.h + 8, window.innerHeight - 50)
+  toolbar.style.left = tbX + 'px'
+  toolbar.style.top = tbY + 'px'
+  toolbar.style.display = (rect.w > 20 && rect.h > 20) ? 'flex' : 'none'
+}
+
+// 드래그로 새 영역 그리기
+document.addEventListener('mousedown', e => {
+  if (e.target.classList.contains('handle')) return
+  if (e.target.id === 'btn-confirm' || e.target.id === 'btn-cancel') return
+  // 선택 영역 내부 클릭 → 이동
+  if (hasSel && e.target === sel) {
+    isMoving = true
+    moveStartRect = { ...rect }
+    startX = e.clientX; startY = e.clientY
+    return
+  }
+  isDragging = true
+  hasSel = false
+  hint.style.display = 'none'
+  startX = e.clientX; startY = e.clientY
+  rect = { x: startX, y: startY, w: 0, h: 0 }
+  applyRect()
+})
+
+document.addEventListener('mousemove', e => {
+  if (isMoving) {
+    const dx = e.clientX - startX, dy = e.clientY - startY
+    rect.x = Math.max(0, Math.min(window.innerWidth - rect.w, moveStartRect.x + dx))
+    rect.y = Math.max(0, Math.min(window.innerHeight - rect.h, moveStartRect.y + dy))
+    applyRect(); return
+  }
+  if (isResizing) {
+    resizeByHandle(e.clientX, e.clientY); return
+  }
+  if (!isDragging) return
+  const x = Math.min(e.clientX, startX)
+  const y = Math.min(e.clientY, startY)
+  const w = Math.abs(e.clientX - startX)
+  const h = Math.abs(e.clientY - startY)
+  rect = { x, y, w, h }
+  applyRect()
+})
+
+document.addEventListener('mouseup', e => {
+  if (isDragging && rect.w > 10 && rect.h > 10) hasSel = true
+  isDragging = false; isMoving = false; isResizing = false; dragDir = null
+})
+
+// 핸들 리사이즈
+document.querySelectorAll('.handle').forEach(h => {
+  h.addEventListener('mousedown', e => {
+    e.stopPropagation()
+    isResizing = true
+    dragDir = h.dataset.dir
+    startX = e.clientX; startY = e.clientY
+    moveStartRect = { ...rect }
+  })
+})
+
+function resizeByHandle(mx, my) {
+  const dx = mx - startX, dy = my - startY
+  let { x, y, w, h } = moveStartRect
+  if (dragDir.includes('r')) w = Math.max(20, w + dx)
+  if (dragDir.includes('b')) h = Math.max(20, h + dy)
+  if (dragDir.includes('l')) { x = Math.min(x + w - 20, x + dx); w = Math.max(20, w - dx) }
+  if (dragDir.includes('t')) { y = Math.min(y + h - 20, y + dy); h = Math.max(20, h - dy) }
+  rect = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) }
+  applyRect()
+}
+
+// 확인 / 취소
+document.getElementById('btn-confirm').addEventListener('click', () => {
+  window.overlay.confirmCrop({ x: rect.x, y: rect.y, w: rect.w, h: rect.h })
+})
+document.getElementById('btn-cancel').addEventListener('click', () => {
+  window.overlay.cancelCrop()
+})
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') window.overlay.cancelCrop()
+  if (e.key === 'Enter' && hasSel) window.overlay.confirmCrop({ x: rect.x, y: rect.y, w: rect.w, h: rect.h })
+})
+</script>
+</body>
+</html>

@@ -15,9 +15,14 @@ contextBridge.exposeInMainWorld('api', {
 
   // 화면 녹화
   getSources: () => ipcRenderer.invoke('get-sources'),
-  startRecording: (opts) => ipcRenderer.invoke('start-recording', opts),
-  stopRecording: () => ipcRenderer.invoke('stop-recording'),
   saveRecordedFrames: (opts) => ipcRenderer.invoke('save-recorded-frames', opts),
   onRecordProgress: (cb) => ipcRenderer.on('record-progress', (_e, data) => cb(data)),
-  removeRecordListener: () => ipcRenderer.removeAllListeners('record-progress')
+  removeRecordListener: () => ipcRenderer.removeAllListeners('record-progress'),
+
+  // 지정 프레임 (크롭 오버레이)
+  openCropWindow: () => ipcRenderer.invoke('open-crop-window'),
+  onCropResult: (cb) => {
+    ipcRenderer.removeAllListeners('crop-result')
+    ipcRenderer.on('crop-result', (_e, data) => cb(data))
+  }
 })
