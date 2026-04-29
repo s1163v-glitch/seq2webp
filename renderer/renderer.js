@@ -1,4 +1,4 @@
-/* renderer.js — Seq2WebP v1.2.1 */
+/* renderer.js — Seq2WebP v1.2.3 */
 
 // ──────────────────────────────────────────
 // 탭 전환
@@ -280,6 +280,7 @@ const recProgressLabel = document.getElementById('rec-progress-label')
 const recOutputInfo = document.getElementById('rec-output-info')
 const recErrorBar = document.getElementById('rec-error-bar')
 const recPreviewImg = document.getElementById('preview-img-rec')
+const recPreviewWrap = document.getElementById('rec-preview-wrap')
 const recPreviewEmpty = document.getElementById('rec-preview-empty')
 const recFmtBtns = document.querySelectorAll('.fmt-btn[data-group="rec"]')
 const cropIndicator = document.getElementById('crop-indicator')
@@ -289,11 +290,14 @@ let recFormat = 'webp'
 let selectedSourceId = null
 let mediaStream = null
 let captureInterval = null
+let livePreviewInterval = null   // 실시간 미리보기 전용 인터벌
 let recordedFrames = []
 let recStartTime = null
 let timerInterval = null
 let recTmpPath = null
-let cropRect = null  // { x, y, w, h } — 지정 프레임 크롭 영역
+let cropRect = null
+let liveVideo = null             // 녹화 중 video 요소 참조 (미리보기용)
+let liveCanvas = null            // 캡처 캔버스 참조
 
 recFmtBtns.forEach(btn => {
   btn.addEventListener('click', () => {
@@ -330,9 +334,7 @@ async function loadSources() {
     cropIndicator.textContent = '영역 선택 중...'
     cropIndicator.style.display = 'inline'
     cropClearBtn.style.display = 'none'
-    // 오버레이 창 열기
     await window.api.openCropWindow()
-    // 결과 대기
     window.api.onCropResult((result) => {
       if (result) {
         cropRect = result
@@ -340,7 +342,6 @@ async function loadSources() {
         cropClearBtn.style.display = 'inline'
         recStartBtn.disabled = false
       } else {
-        // 취소
         cropRect = null
         cropIndicator.style.display = 'none'
         cropClearBtn.style.display = 'none'
@@ -377,7 +378,6 @@ async function loadSources() {
   }
 }
 
-// 크롭 초기화 버튼
 cropClearBtn.addEventListener('click', () => {
   cropRect = null
   cropIndicator.style.display = 'none'
@@ -391,10 +391,8 @@ recStartBtn.addEventListener('click', async () => {
   if (!selectedSourceId) return
   recErrorBar.style.display = 'none'
   recordedFrames = []
-  const fps = Math.max(1, Math.min(30, parseInt(recFpsInput.value) || 10))
 
-  // 지정 프레임 모드: 전체 화면 스트림 중 크롭만
-  // 일반 모드: 선택한 소스 스트림
+  const fps = Math.max(1, Math.min(30, parseInt(recFpsInput.value) || 10))
   const sourceId = cropRect ? await getPrimaryScreenSourceId() : selectedSourceId
 
   try {
@@ -407,9 +405,9 @@ recStartBtn.addEventListener('click', async () => {
     recErrorBar.style.display = 'block'; return
   }
 
-  const video = document.createElement('video')
-  video.srcObject = mediaStream
-  video.play()
+  liveVideo = document.createElement('video')
+  liveVideo.srcObject = mediaStream
+  liveVideo.play()
 
   recStartBtn.style.display = 'none'
   recStopBtn.style.display = 'inline'
@@ -426,26 +424,48 @@ recStartBtn.addEventListener('click', async () => {
     recTimer.textContent = `${m}:${s}`
   }, 500)
 
-  await new Promise(r => { video.onloadedmetadata = r })
+  await new Promise(r => { liveVideo.onloadedmetadata = r })
 
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
+  liveCanvas = document.createElement('canvas')
+  const ctx = liveCanvas.getContext('2d')
+
+  // ── 실시간 미리보기 표시
+  recPreviewEmpty.style.display = 'none'
+  recPreviewImg.style.display = 'block'
 
   if (cropRect) {
-    // 크롭 영역 크기로 캔버스 설정
-    canvas.width = cropRect.w
-    canvas.height = cropRect.h
+    liveCanvas.width = cropRect.w
+    liveCanvas.height = cropRect.h
+
+    // 캡처 인터벌 (프레임 저장 + 미리보기 동시)
     captureInterval = setInterval(() => {
-      ctx.drawImage(video, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, cropRect.w, cropRect.h)
-      recordedFrames.push(canvas.toDataURL('image/png'))
+      ctx.drawImage(liveVideo, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, cropRect.w, cropRect.h)
+      const dataUrl = liveCanvas.toDataURL('image/png')
+      recordedFrames.push(dataUrl)
+      // 캡처 FPS보다 빠르게 미리보기 갱신 (30fps 고정)
+      recPreviewImg.src = dataUrl
     }, Math.round(1000 / fps))
+
+    // 미리보기는 더 부드럽게 (캡처 FPS와 별도로 ~24fps)
+    livePreviewInterval = setInterval(() => {
+      ctx.drawImage(liveVideo, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, cropRect.w, cropRect.h)
+      recPreviewImg.src = liveCanvas.toDataURL('image/jpeg', 0.6)
+    }, 42)
+
   } else {
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    liveCanvas.width = liveVideo.videoWidth
+    liveCanvas.height = liveVideo.videoHeight
+
     captureInterval = setInterval(() => {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      recordedFrames.push(canvas.toDataURL('image/png'))
+      ctx.drawImage(liveVideo, 0, 0, liveCanvas.width, liveCanvas.height)
+      recordedFrames.push(liveCanvas.toDataURL('image/png'))
     }, Math.round(1000 / fps))
+
+    // 미리보기 ~24fps
+    livePreviewInterval = setInterval(() => {
+      ctx.drawImage(liveVideo, 0, 0, liveCanvas.width, liveCanvas.height)
+      recPreviewImg.src = liveCanvas.toDataURL('image/jpeg', 0.6)
+    }, 42)
   }
 })
 
@@ -456,16 +476,28 @@ async function getPrimaryScreenSourceId() {
 }
 
 recStopBtn.addEventListener('click', () => {
-  clearInterval(captureInterval); clearInterval(timerInterval); captureInterval = null
+  clearInterval(captureInterval)
+  clearInterval(livePreviewInterval)
+  clearInterval(timerInterval)
+  captureInterval = null
+  livePreviewInterval = null
+
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null }
+  liveVideo = null
+
   recStopBtn.style.display = 'none'
   recStartBtn.style.display = 'inline'
   recTimer.style.display = 'none'
+
+  // 미리보기에 마지막 프레임 고정 (녹화 종료 후에도 보임)
   if (recordedFrames.length > 0) {
+    recPreviewImg.src = recordedFrames[recordedFrames.length - 1]
     recConvertBtn.disabled = false
     recConvertBtn.style.display = 'inline'
     recConvertBtn.textContent = `변환 (${recordedFrames.length}프레임)`
   } else {
+    recPreviewImg.style.display = 'none'
+    recPreviewEmpty.style.display = ''
     recErrorBar.textContent = '캡처된 프레임이 없습니다.'
     recErrorBar.style.display = 'block'
   }
@@ -491,7 +523,7 @@ recConvertBtn.addEventListener('click', async () => {
     frames: recordedFrames, fps, loopCount, quality,
     width: outW, height: outH, format: recFormat,
     paletteSize: 256, blurSigma: 0, dither: true,
-    cropRect: null  // 이미 캔버스에서 크롭됨
+    cropRect: null
   })
   recProgressFill.style.width = '100%'
   if (!result.success) { recErrorBar.textContent = '변환 실패: ' + result.error; recErrorBar.style.display = 'block'; recConvertBtn.disabled = false; recProgressWrap.style.display = 'none'; return }
