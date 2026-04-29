@@ -1,6 +1,6 @@
 {
   "name": "seq2webp",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Image sequence to animated WebP/GIF converter",
   "main": "main.js",
   "scripts": {
@@ -20,9 +20,7 @@
   "build": {
     "appId": "com.geolabs.seq2webp",
     "productName": "Seq2WebP",
-    "directories": {
-      "output": "dist"
-    },
+    "directories": { "output": "dist" },
     "win": {
       "target": [{"target": "portable", "arch": ["x64"]}],
       "icon": "assets/icon.ico"
@@ -30,6 +28,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "preload-overlay.js",
       "renderer/**/*",
       "assets/**/*",
       "node_modules/**/*"
@@ -37,8 +36,12 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/sharp/**/*",
-      "node_modules/@ffmpeg-installer/**/*",
-      "node_modules/@ffprobe-installer/**/*"
+      "node_modules/@ffmpeg-installer/ffmpeg/bin/**/*",
+      "node_modules/@ffmpeg-installer/ffmpeg/index.js",
+      "node_modules/@ffprobe-installer/ffprobe/bin/**/*",
+      "node_modules/@ffprobe-installer/ffprobe/index.js",
+      "node_modules/@ffprobe-installer/win32-x64/**/*",
+      "node_modules/@ffmpeg-installer/win32-x64/**/*"
     ]
   }
 }
