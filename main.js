@@ -6,6 +6,25 @@ const os = require('os')
 let mainWindow
 let cropWindow = null
 
+// 앱 실행 중 생성된 임시 파일 경로 추적
+// 저장 다이얼로그에서 실제 저장되면 목록에서 제거, 앱 종료 시 남은 것 일괄 삭제
+const tmpFiles = new Set()
+
+function registerTmp(filePath) {
+  if (filePath) tmpFiles.add(filePath)
+}
+
+function unregisterTmp(filePath) {
+  if (filePath) tmpFiles.delete(filePath)
+}
+
+function cleanupTmpFiles() {
+  for (const f of tmpFiles) {
+    try { fs.unlinkSync(f) } catch {}
+  }
+  tmpFiles.clear()
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 980, height: 720, minWidth: 780, minHeight: 560,
@@ -24,9 +43,11 @@ function createWindow() {
 app.whenReady().then(createWindow)
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+// 앱 종료 시 임시 파일 일괄 삭제
+app.on('before-quit', () => cleanupTmpFiles())
 
 // ──────────────────────────────────────────
-// 이미지 시퀀스 → WebP/GIF 변환 (기존)
+// 이미지 시퀀스 → WebP/GIF 변환
 // ──────────────────────────────────────────
 ipcMain.handle('convert-frames', async (event, opts) => {
   const { filePaths, fps, loopCount, quality, width, height, format, paletteSize, blurSigma, dither } = opts
@@ -53,6 +74,7 @@ async function buildWebP(event, sharp, filePaths, loopCount, quality, width, hei
   const animBuf = buildAnimatedWebP(frames, delayMs, loopCount, width, height)
   const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.webp`)
   fs.writeFileSync(tmpPath, animBuf)
+  registerTmp(tmpPath)
   return { success: true, tmpPath, frameCount: frames.length, size: animBuf.length, format: 'webp' }
 }
 
@@ -81,30 +103,20 @@ async function buildGIF(event, sharp, filePaths, loopCount, quality, width, heig
   const gifBuf = encodeAnimatedGIF(rgbFrames, W, H, delayMs, loopCount, palette, nearest, paletteSize, dither)
   const tmpPath = path.join(os.tmpdir(), `seq2webp_${Date.now()}.gif`)
   fs.writeFileSync(tmpPath, gifBuf)
+  registerTmp(tmpPath)
   return { success: true, tmpPath, frameCount: filePaths.length, size: gifBuf.length, format: 'gif' }
 }
 
 // ──────────────────────────────────────────
 // ffmpeg / ffprobe 경로 헬퍼
-// asar 패키징 시 언팩 디렉토리로 지정
 // ──────────────────────────────────────────
 function getFFmpegPaths() {
-  // 일반 실행 시: node_modules에서 직접
-  // asar 패키징 시: app.asar.unpacked 에서 찾아야 함
   const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg')
   const ffprobeInstaller = require('@ffprobe-installer/ffprobe')
-
   let ffmpegPath = ffmpegInstaller.path
   let ffprobePath = ffprobeInstaller.path
-
-  // asar 환경에서는 .asar → .asar.unpacked 으로 경로 대체
-  if (ffmpegPath.includes('app.asar')) {
-    ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked')
-  }
-  if (ffprobePath.includes('app.asar')) {
-    ffprobePath = ffprobePath.replace('app.asar', 'app.asar.unpacked')
-  }
-
+  if (ffmpegPath.includes('app.asar')) ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked')
+  if (ffprobePath.includes('app.asar')) ffprobePath = ffprobePath.replace('app.asar', 'app.asar.unpacked')
   return { ffmpegPath, ffprobePath }
 }
 
@@ -173,47 +185,30 @@ ipcMain.handle('get-sources', async () => {
 // ──────────────────────────────────────────
 ipcMain.handle('open-crop-window', async () => {
   if (cropWindow && !cropWindow.isDestroyed()) { cropWindow.focus(); return }
-
   const { width, height } = screen.getPrimaryDisplay().bounds
-
-  // preload-overlay.js 경로: asar 환경 대응
   const overlayPreload = path.join(__dirname, 'preload-overlay.js')
-
   cropWindow = new BrowserWindow({
     width, height, x: 0, y: 0,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    movable: false,
-    webPreferences: {
-      preload: overlayPreload,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    frame: false, transparent: true, alwaysOnTop: true,
+    skipTaskbar: true, resizable: false, movable: false,
+    webPreferences: { preload: overlayPreload, contextIsolation: true, nodeIntegration: false }
   })
-
   cropWindow.loadFile(path.join(__dirname, 'renderer', 'overlay.html'))
   cropWindow.on('closed', () => { cropWindow = null })
 })
 
 ipcMain.handle('confirm-crop', async (event, cropRect) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('crop-result', cropRect)
-  }
-  if (cropWindow && !cropWindow.isDestroyed()) { cropWindow.close() }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('crop-result', cropRect)
+  if (cropWindow && !cropWindow.isDestroyed()) cropWindow.close()
 })
 
 ipcMain.handle('cancel-crop', async () => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('crop-result', null)
-  }
-  if (cropWindow && !cropWindow.isDestroyed()) { cropWindow.close() }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('crop-result', null)
+  if (cropWindow && !cropWindow.isDestroyed()) cropWindow.close()
 })
 
 // ──────────────────────────────────────────
-// 녹화 프레임 저장 로직
+// 녹화 프레임 저장
 // ──────────────────────────────────────────
 ipcMain.handle('save-recorded-frames', async (event, { frames, fps, loopCount, quality, width, height, format, paletteSize, blurSigma, dither }) => {
   const tmpDir = path.join(os.tmpdir(), `seq2webp_rec_${Date.now()}`)
@@ -248,7 +243,9 @@ ipcMain.handle('save-dialog', async (event, { tmpPath, format }) => {
   })
   if (result.canceled) return { saved: false }
   fs.copyFileSync(tmpPath, result.filePath)
+  // 주요 저장 완료 → 임시 파일 정리 + 추적에서 제거
   try { fs.unlinkSync(tmpPath) } catch {}
+  unregisterTmp(tmpPath)
   return { saved: true, filePath: result.filePath }
 })
 
